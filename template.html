@@ -65,7 +65,7 @@ body{font-family:'Segoe UI','Century Gothic',Arial,sans-serif;background:#f5f6fa
 .card-grid{display:grid;grid-template-columns:repeat(auto-fill,minmax(210px,1fr));gap:14px}
 .product-card{background:#fff;border-radius:10px;overflow:hidden;box-shadow:0 1px 4px rgba(0,0,0,.07);cursor:pointer;transition:all .2s;border:2px solid transparent;position:relative}
 .product-card:hover{box-shadow:0 4px 16px rgba(0,0,0,.12);transform:translateY(-2px);border-color:#c8d6e5}
-.card-img{width:100%;height:140px;background:linear-gradient(135deg,#eef2f7 0%,#dfe6ed 100%);display:flex;align-items:center;justify-content:center;position:relative;overflow:hidden}
+.card-img{width:100%;height:140px;background:linear-gradient(135deg,#eef2f7 0%,#dfe6ed 100%);display:flex;align-items:center;justify-content:center;position:relative;overflow:hidden}.product-card.placeholder-card{border:2px dashed #d4a85a;background:#fffce8}.product-card.placeholder-card .card-img{background:linear-gradient(135deg,#fff8d6 0%,#fff1b8 100%)}.pending-tag{position:absolute;top:8px;left:8px;z-index:3;background:#f39c12;color:#fff;font-size:9px;font-weight:700;padding:2px 6px;border-radius:3px;letter-spacing:.5px}.placeholder-banner{background:#fff8d6;border-left:4px solid #f39c12;padding:10px 14px;margin-bottom:14px;border-radius:6px;font-size:13px;color:#7d6608;line-height:1.5}.placeholder-banner strong{color:#8a6d0a}
 .card-img img{width:100%;height:100%;object-fit:contain;background:#fff;display:block}
 .card-img .placeholder-icon{font-size:40px;color:#b0bec5}
 .card-img .tier-tag{position:absolute;top:8px;left:8px;z-index:2}
@@ -186,7 +186,8 @@ tr.terminated td{text-decoration:line-through}
 <div class="risk-detail-panel" id="riskPanel"><div class="panel-header"><h3 id="riskPanelTitle"></h3><button class="panel-close" onclick="closeRiskPanel()">&times;</button></div><div id="riskPanelBody"></div></div>
 <div class="tab-nav">
   <button class="tab-btn active" data-tab="pd-table">PD Table</button>
-  <button class="tab-btn" data-tab="pipeline">Pipeline</button>
+  <button class="tab-btn" data-tab="pipeline-us">Pipeline US</button>
+  <button class="tab-btn" data-tab="pipeline-mx">Pipeline MX</button>
   <button class="tab-btn" data-tab="tracker">Weekly Tracker</button>
 </div>
 <div class="tab-content active" id="tab-pd-table">
@@ -204,8 +205,8 @@ tr.terminated td{text-decoration:line-through}
     <div class="modal-body" id="modalBody"></div>
   </div>
 </div>
-<div class="tab-content" id="tab-pipeline">
-  <div class="filter-bar" style="margin-bottom:8px">
+<div class="tab-content" id="tab-pipeline-us">
+  <div class="filter-bar" style="margin-bottom:8px;justify-content:flex-end">
     <div class="filter-group"><label>Type</label><div class="toggle-group" id="f2-asi-toggle"><button class="toggle-btn active" data-val="NPD">NPD only</button><button class="toggle-btn" data-val="ASI">ASI only</button><button class="toggle-btn" data-val="ALL">All</button></div></div>
   </div>
   <div class="pipeline-container">
@@ -216,16 +217,26 @@ tr.terminated td{text-decoration:line-through}
     <div class="stage-detail" id="stageDetail"></div>
   </div>
 </div>
+<div class="tab-content" id="tab-pipeline-mx">
+  <div class="filter-bar" style="margin-bottom:8px;justify-content:flex-end">
+    <div class="filter-group"><label>Type</label><div class="toggle-group" id="f2mx-asi-toggle"><button class="toggle-btn active" data-val="NPD">NPD only</button><button class="toggle-btn" data-val="ASI">ASI only</button><button class="toggle-btn" data-val="ALL">All</button></div></div>
+  </div>
+  <div class="pipeline-container">
+    <div class="pipeline-wrapper" id="pipelineWrapperMX">
+      <div class="pipeline-flow" id="pipelineFlowMX"></div>
+      <p class="pipeline-hint">Click any stage to view project details</p>
+    </div>
+    <div class="stage-detail" id="stageDetailMX"></div>
+  </div>
+</div>
 <div class="tab-content" id="tab-tracker">
   <div class="filter-bar">
-    <div class="filter-group"><label>Type</label><div class="toggle-group" id="f3-asi-toggle"><button class="toggle-btn active" data-val="NPD">NPD only</button><button class="toggle-btn" data-val="ASI">ASI only</button><button class="toggle-btn" data-val="ALL">All</button></div></div>
     <div class="filter-group"><label>PM</label><select id="f3-pm" onchange="filterPage3()"><option value="">All</option></select></div>
-    <div class="filter-group"><label>Category</label><select id="f3-cat" onchange="filterPage3()"><option value="">All</option></select></div>
-    <div class="filter-group"><label>Risk</label><select id="f3-risk" onchange="filterPage3()"><option value="">All</option><option value="高">High</option><option value="中">Medium</option><option value="低">Low</option></select></div>
     <div class="filter-group"><label>Location</label><select id="f3-loc" onchange="filterPage3()"><option value="">All</option><option value="China">China-side</option><option value="US">US-side</option><option value="Both">Both</option></select></div>
     <div class="filter-group"><label>PO</label><select id="f3-po" onchange="filterPage3()"><option value="">All</option><option value="YES">Placed</option><option value="NO">No PO</option></select></div>
     <div class="filter-group"><label>For</label><select id="f3-buyer" onchange="filterPage3()"><option value="">All Buyers</option></select></div>
     <div class="filter-group"><label>Search</label><input type="text" id="f3-search" placeholder="SKU or keyword..." oninput="filterPage3()"></div>
+    <div class="filter-group" style="margin-left:auto"><label>Type</label><div class="toggle-group" id="f3-asi-toggle"><button class="toggle-btn active" data-val="NPD">NPD only</button><button class="toggle-btn" data-val="ASI">ASI only</button><button class="toggle-btn" data-val="ALL">All</button></div></div>
   </div>
   <div class="table-wrapper">
     <table class="data-table" id="page3Table">
@@ -236,7 +247,8 @@ tr.terminated td{text-decoration:line-through}
 </div>
 <script>
 var page1Data = {{PAGE1_DATA}};
-var pipelineData = {{PIPELINE_DATA}};
+var pipelineUSData = {{PIPELINE_US_DATA}};
+var pipelineMXData = {{PIPELINE_MX_DATA}};
 var page3Data = {{PAGE3_DATA}};
 var summaryStats = {{SUMMARY_STATS}};
 var releasedData = {{RELEASED_DATA}};
@@ -259,7 +271,7 @@ function statusClass(s){
 }
 function riskDotClass(r){if(r==='\u9ad8')return'risk-dot-high';if(r==='\u4e2d')return'risk-dot-mid';if(r==='\u4f4e')return'risk-dot-low';return''}
 
-var catIcons={'Air Fryers':'\ud83c\udf73','Air Fryer (Oven)':'\ud83c\udf73','Oven':'\ud83c\udf55','Bread Maker':'\ud83c\udf5e','Bread maker':'\ud83c\udf5e','Rice Cooker':'\ud83c\udf5a','Rice cooker':'\ud83c\udf5a','Slow Cooker':'\ud83c\udf72','Slow cooker':'\ud83c\udf72','Grill Panini':'\ud83c\udf56','GRILL PANINI':'\ud83c\udf56','Deep Fryer':'\ud83c\udf5f','Deep fryer':'\ud83c\udf5f','Roaster Oven':'\ud83c\udf57','Roaster oven':'\ud83c\udf57','ICEMAN Dispenser':'\ud83e\uddca','Water Dispenser':'\ud83d\udca7','Water Dispenser MX':'\ud83d\udca7','Ice Cream':'\ud83c\udf68','Ice Cream Maker':'\ud83c\udf68','Coffee':'\u2615','Coffee grinder':'\u2615','Ice Maker':'\ud83e\uddca','Griddle':'\ud83c\udf73','Blender':'\ud83e\udd64','Hand Blender':'\ud83e\udd64','HAND BLENDER':'\ud83e\udd64','Hand Mixer':'\ud83e\udd64','HAND MIXER':'\ud83e\udd64','Pressure Cooker':'\ud83c\udf72','MULTI-PRESSURE COOKER':'\ud83c\udf72','Vacuum':'\ud83e\uddf9','Grill':'\ud83c\udf56','Kettle':'\ud83c\udf75','Water Kettle':'\ud83c\udf75','Kettle (CA)':'\ud83c\udf75','Kettle (EU/UK)':'\ud83c\udf75','Microwave':'\ud83d\udcfb','Microwave Oven':'\ud83d\udcfb','Microwave (MX)':'\ud83d\udcfb','Microwave (\u65b0)':'\ud83d\udcfb','T1 Microwave':'\ud83d\udcfb','T1 ICEMAN':'\ud83e\uddca','T1 Slushy':'\ud83e\uddca','T1 Vacuum Sealer':'\ud83d\udce6','T1':'\ud83d\udee0','Icemaker+water dispenser':'\ud83e\uddca','1.5 L Slush Maker':'\ud83e\uddca','2L  Slush maker Tier 1':'\ud83e\uddca'};
+var catIcons={'Air Fryers':'\ud83c\udf73','Air Fryer (Oven)':'\ud83c\udf73','Oven':'\ud83c\udf55','Bread Maker':'\ud83c\udf5e','Bread maker':'\ud83c\udf5e','Rice Cooker':'\ud83c\udf5a','Rice cooker':'\ud83c\udf5a','Slow Cooker':'\ud83c\udf72','Slow cooker':'\ud83c\udf72','Grill Panini':'\ud83c\udf56','GRILL PANINI':'\ud83c\udf56','Deep Fryer':'\ud83c\udf5f','Deep fryer':'\ud83c\udf5f','Roaster Oven':'\ud83c\udf57','Roaster oven':'\ud83c\udf57','ICEMAN Dispenser':'\ud83e\uddca','Water Dispenser':'\ud83d\udca7','Water Dispenser MX':'\ud83d\udca7','Ice Cream':'\ud83c\udf68','Ice Cream Maker':'\ud83c\udf68','Coffee':'\u2615','Coffee grinder':'\u2615','Ice Maker':'\ud83e\uddca','Griddle':'\ud83c\udf73','Blender':'\ud83e\udd64','Hand Blender':'\ud83e\udd64','HAND BLENDER':'\ud83e\udd64','Hand Mixer':'\ud83e\udd64','HAND MIXER':'\ud83e\udd64','Pressure Cooker':'\ud83c\udf72','MULTI-PRESSURE COOKER':'\ud83c\udf72','Vacuum':'\ud83e\uddf9','Grill':'\ud83c\udf56','Kettle':'\ud83c\udf75','Water Kettle':'\ud83c\udf75','Kettle (CA)':'\ud83c\udf75','Kettle (EU/UK)':'\ud83c\udf75','Microwave':'\ud83d\udcfb','Microwave Oven':'\ud83d\udcfb','Microwave (MX)':'\ud83d\udcfb','Microwave (\u65b0)':'\ud83d\udcfb','T1 Microwave':'\ud83d\udcfb','T1 ICEMAN':'\ud83e\uddca','T1 Slushy':'\ud83e\uddca','T1 Vacuum Sealer':'\ud83d\udce6','T1':'\ud83d\udee0','Icemaker+water dispenser':'\ud83e\uddca','Iceman':'\ud83e\uddca','Mixer':'\ud83e\udd64','1.5 L Slush Maker':'\ud83e\uddca','2L  Slush maker Tier 1':'\ud83e\uddca','Other':'\ud83d\udce6'};
 function getCatIcon(c){return catIcons[c]||'\ud83d\udce6'}
 
 var pmEnglish={'Cottee Wei \u2014 \u7a7a\u6c14\u70b8\u9505 + T1 \u9879\u76ee':'Cottee Wei \u2014 Air Fryers + T1','Rowling Luo \u2014 \u70e4\u7bb1 / \u9762\u5305\u673a / \u996d\u7172 / \u6162\u7096\u9505 / \u6cb9\u70b8\u9505':'Rowling Luo \u2014 Ovens / Bread / Rice / Slow Cooker / Fryer','Serena Sun \u2014 ICEMAN / \u5496\u5561 / \u51b0\u6dc7\u6dcb':'Serena Sun \u2014 ICEMAN / Coffee / Ice Cream','Chris Zhou \u2014 \u70e4\u76d8 / \u6405\u62cc\u7c7b + MX \u9879\u76ee':'Chris Zhou \u2014 Griddle / Blender + MX','Liz Liu \u2014 \u6c34\u58f6 + \u5fae\u6ce2\u7089':'Liz Liu \u2014 Kettles + Microwave'};
@@ -283,7 +295,7 @@ function switchTab(tabId){
   btns.forEach(function(b){if(b.getAttribute('data-tab')===tabId)b.classList.add('active')});
 }
 function statClick(type){
-  if(type==='total'){closeRiskPanel();switchTab('pipeline');return}
+  if(type==='total'){closeRiskPanel();switchTab('pipeline-us');return}
   if(type==='high'||type==='mid'){
     var panel=document.getElementById('riskPanel');
     if(currentRiskType===type && panel.classList.contains('active')){closeRiskPanel();return}
@@ -313,7 +325,14 @@ var currentStatFilter='';var currentRiskType='';
 function showRiskDetail(type){
   var riskChar=(type==='high')?'高':'中';
   var label=(type==='high')?'High Risk':'Medium Risk';
-  var items=page3Data.filter(function(p){return p.risk===riskChar});
+  // Mirror stat-card filter: NPD only, in PD Table, not MP, not ASI.
+  // Stat number is built from this same set on the Python side.
+  var items=page3Data.filter(function(p){
+    if(p.risk!==riskChar) return false;
+    if(p.isASI) return false;
+    if(p.isMP) return false;
+    return true;
+  });
   document.getElementById('riskPanelTitle').textContent=label+' Projects ('+items.length+')';
   var h='<table class="risk-detail-table"><thead><tr><th>SKU</th><th>PM</th><th>Current Status</th><th>Issues / Risks</th><th>Next Action</th><th>CRD</th><th>Location</th></tr></thead><tbody>';
   items.forEach(function(p){
@@ -386,12 +405,18 @@ function filterPage1(){
     if(catF&&p.category!==catF)return false;
     if(poF==='YES'&&(!p.poPlaced||p.poPlaced.toUpperCase().indexOf('YES')===-1))return false;
     if(poF==='NO'&&p.poPlaced&&p.poPlaced.toUpperCase().indexOf('YES')!==-1)return false;
-    if(currentPLFilter==='ON'&&!p.onProjectList)return false;
+    if(currentPLFilter==='ON'&&!p.isPlaceholder&&!p.onProjectList)return false;
     if(searchF&&JSON.stringify(p).toLowerCase().indexOf(searchF)===-1)return false;
     return true;
   });
   var groups={},catOrder=[];
   filtered.forEach(function(p){var c=p.category;if(!groups[c]){groups[c]=[];catOrder.push(c)}groups[c].push(p)});
+  // Pin "Other" to the end of the page so the catch-all small bucket
+  // doesn't interrupt the major-category flow.
+  if(catOrder.indexOf('Other')>=0){
+    catOrder=catOrder.filter(function(c){return c!=='Other'});
+    catOrder.push('Other');
+  }
   var container=document.getElementById('page1Container');
   if(filtered.length===0){container.innerHTML='<div class="no-results"><div class="icon">\ud83d\udd0d</div><div>No products match your filters</div></div>';return}
   var html='';
@@ -401,14 +426,17 @@ function filterPage1(){
     products.forEach(function(p){
       var gi=page1Data.indexOf(p);var sc=statusClass(p.currentStatus);var rdc=riskDotClass(p.risk);
       var po='';if(p.poPlaced&&p.poPlaced.toUpperCase().indexOf('YES')!==-1)po='<div class="card-po card-po-yes">PO \u2713</div>';
-      html+='<div class="product-card" onclick="openModal('+gi+')">';
+      var cardClass='product-card'+(p.isPlaceholder?' placeholder-card':'');
+      html+='<div class="'+cardClass+'" onclick="openModal('+gi+')">';
       html+='<div class="card-img">';
+      if(p.isPlaceholder)html+='<span class="pending-tag">PENDING</span>';
       html+=p.image?'<img src="'+p.image+'" alt="'+esc(p.sku)+'" loading="lazy">':'<span class="placeholder-icon">'+getCatIcon(cat)+'</span>';
       if(p.tier)html+='<span class="tier-tag">'+tierBadge(p.tier)+'</span>';
       if(rdc)html+='<span class="risk-dot '+rdc+'"></span>';
       html+='</div><div class="card-body"><div class="card-sku">'+esc(p.sku)+'</div>';
       if(p.pm)html+='<div style="font-size:11px;color:#888;margin-bottom:3px">PM: '+esc(p.pm)+'</div>';
       if(p.currentStatus)html+='<span class="card-status-badge '+sc+'">'+esc(p.currentStatus)+'</span>';
+      if(p.isPlaceholder)html+='<div style="font-size:10px;color:#a07c2c;margin-top:4px;font-style:italic">Awaiting PM input</div>';
       html+=po+'</div></div>';
     });
     html+='</div></div>';
@@ -432,6 +460,15 @@ function openModal(idx){
   if(p.currentStatus)h+='<span class="card-status-badge '+statusClass(p.currentStatus)+'">'+esc(p.currentStatus)+'</span>';
   if(p.risk)h+=riskBadge(p.risk);if(p.tier)h+=tierBadge(p.tier);
   h+='</div>';
+  if(p.isPlaceholder){
+    h+='<div class="placeholder-banner" style="margin-top:14px"><strong>Awaiting PM input.</strong> This SKU is in the Weekly Tracker but PM hasn\'t supplied commercial info (description / cost / MSRP / factory) in the PD Table yet.</div>';
+    if(p.issue)h+='<div class="detail-section"><div class="detail-section-title">Issues / Risks</div><div class="detail-value">'+esc(p.issue)+'</div></div>';
+    if(p.nextAction)h+='<div class="detail-section"><div class="detail-section-title">Next Action</div><div class="detail-value">'+esc(p.nextAction)+'</div></div>';
+    if(p.crd)h+='<div class="detail-section"><div class="detail-section-title">CRD</div><div class="detail-value">'+esc(cleanDate(p.crd))+'</div></div>';
+    document.getElementById('modalBody').innerHTML=h;
+    document.getElementById('modalOverlay').classList.add('active');document.body.style.overflow='hidden';
+    return;
+  }
   if(p.description){h+='<div class="detail-section" style="margin-top:16px"><div class="detail-section-title">Description</div><div class="detail-value">'+esc(p.description)+'</div></div>'}
   var feats=[];
   if(p.topFeature)feats.push({t:p.topFeature,top:true});
@@ -462,74 +499,83 @@ function openModal(idx){
 function closeModal(){document.getElementById('modalOverlay').classList.remove('active');document.body.style.overflow=''}
 document.getElementById('modalOverlay').addEventListener('click',function(e){if(e.target===this)closeModal()});
 document.addEventListener('keydown',function(e){if(e.key==='Escape')closeModal()});
-// ===== PAGE 2: PIPELINE =====
-var activePipelineIdx=-1;
-// ASI/NPD filter for Pipeline. Default: hide ASI (NPD-only). Values: 'NPD' | 'ASI' | 'ALL'.
-var currentP2ASIFilter='NPD';
-function p2KeepProject(p){
-  if(currentP2ASIFilter==='NPD' && p.isASI)return false;
-  if(currentP2ASIFilter==='ASI' && !p.isASI)return false;
-  return true;
-}
-function p2FilteredProjects(idx){return (pipelineData.projects[idx]||[]).filter(p2KeepProject)}
-function p2FilteredCount(idx){return p2FilteredProjects(idx).length}
-function renderPipeline(){
-  var flow=document.getElementById('pipelineFlow'),html='';
-  pipelineData.labels.forEach(function(label,i){
-    if(i>0)html+='<div class="pipeline-connector"></div>';
-    var c=p2FilteredCount(i);
-    var hasItems=c>0;
-    html+='<div class="pipeline-stage '+(hasItems?'has-items':'no-items')+'" data-idx="'+i+'">'
-      +'<div class="pipeline-node"><div class="count">'+c+'</div><div class="plabel">'+label+'</div></div></div>';
-  });
-  flow.innerHTML=html;
-  flow.querySelectorAll('.pipeline-stage').forEach(function(s){
-    s.addEventListener('click',function(){
-      var idx=parseInt(this.getAttribute('data-idx'));
-      if(p2FilteredCount(idx)===0)return;
-      if(activePipelineIdx===idx){closePipelineDetail();return}
-      showStageDetail(idx);
+// ===== PAGE 2: PIPELINE (US + Mexico) =====
+// One factory that builds an independent pipeline view for each tab. Each view
+// owns its own data, ASI filter state, active stage index, and DOM ids — so US
+// and Mexico tabs don't conflict. Default ASI filter: NPD only.
+function PipelineView(data, ids){
+  var self = {data:data, ids:ids, asiFilter:'NPD', activeIdx:-1};
+  self.keep = function(p){
+    if(self.asiFilter==='NPD' && p.isASI) return false;
+    if(self.asiFilter==='ASI' && !p.isASI) return false;
+    return true;
+  };
+  self.filteredProjects = function(idx){return (self.data.projects[idx]||[]).filter(self.keep)};
+  self.filteredCount    = function(idx){return self.filteredProjects(idx).length};
+  self.render = function(){
+    var flow=document.getElementById(self.ids.flow), html='';
+    self.data.labels.forEach(function(label,i){
+      if(i>0) html+='<div class="pipeline-connector"></div>';
+      var c=self.filteredCount(i), hasItems=c>0;
+      html+='<div class="pipeline-stage '+(hasItems?'has-items':'no-items')+'" data-idx="'+i+'">'
+        +'<div class="pipeline-node"><div class="count">'+c+'</div><div class="plabel">'+label+'</div></div></div>';
     });
-  });
-}
-function showStageDetail(idx){
-  activePipelineIdx=idx;
-  var wrapper=document.getElementById('pipelineWrapper');
-  var detail=document.getElementById('stageDetail');
-  var label=pipelineData.labels[idx];
-  var projects=p2FilteredProjects(idx);
-  document.querySelectorAll('.pipeline-stage').forEach(function(s,i){s.classList.toggle('active',i===idx)});
-  wrapper.classList.add('floated');
-  if(!projects.length){detail.innerHTML='<p style="color:#999;padding:20px">No projects in this stage.</p>';detail.classList.add('active');return}
-  var h='<div class="stage-detail-header"><div style="display:flex;align-items:center;gap:10px"><h3>'+label+'</h3><span class="stage-count-badge">'+projects.length+' project'+(projects.length>1?'s':'')+'</span></div><button class="stage-detail-close" onclick="closePipelineDetail()">\u00d7</button></div>';
-  h+='<table class="data-table"><thead><tr><th>SKU</th><th>Category</th><th>PM</th><th>Risk</th><th>PO</th><th>Next Action</th></tr></thead><tbody>';
-  projects.forEach(function(p){
-    h+='<tr><td><strong>'+esc(p.sku)+'</strong>'+(p.isASI?' <span class="risk-badge risk-none" style="font-size:9px">ASI</span>':'')+'</td><td>'+esc(p.category)+'</td><td>'+esc(p.pm)+'</td><td>'+riskBadge(p.risk)+'</td><td>'+poBadge(p)+'</td><td style="max-width:350px">'+esc(p.action)+'</td></tr>';
-  });
-  h+='</tbody></table>';
-  detail.innerHTML=h;
-  setTimeout(function(){detail.classList.add('active')},50);
-}
-function closePipelineDetail(){
-  activePipelineIdx=-1;
-  var wrapper=document.getElementById('pipelineWrapper');
-  var detail=document.getElementById('stageDetail');
-  detail.classList.remove('active');
-  document.querySelectorAll('.pipeline-stage').forEach(function(s){s.classList.remove('active')});
-  setTimeout(function(){wrapper.classList.remove('floated');detail.innerHTML=''},400);
-}
-function initP2ASIToggle(){
-  document.querySelectorAll('#f2-asi-toggle .toggle-btn').forEach(function(btn){
-    btn.addEventListener('click',function(){
-      document.querySelectorAll('#f2-asi-toggle .toggle-btn').forEach(function(b){b.classList.remove('active')});
-      this.classList.add('active');
-      currentP2ASIFilter=this.getAttribute('data-val');
-      // Close any open stage detail to avoid stale state
-      closePipelineDetail();
-      renderPipeline();
+    flow.innerHTML=html;
+    flow.querySelectorAll('.pipeline-stage').forEach(function(s){
+      s.addEventListener('click',function(){
+        var idx=parseInt(this.getAttribute('data-idx'));
+        if(self.filteredCount(idx)===0) return;
+        if(self.activeIdx===idx){self.closeDetail(); return}
+        self.showDetail(idx);
+      });
     });
-  });
+  };
+  self.showDetail = function(idx){
+    self.activeIdx=idx;
+    var wrapper=document.getElementById(self.ids.wrapper);
+    var detail=document.getElementById(self.ids.detail);
+    var flow=document.getElementById(self.ids.flow);
+    var label=self.data.labels[idx], projects=self.filteredProjects(idx);
+    flow.querySelectorAll('.pipeline-stage').forEach(function(s,i){s.classList.toggle('active',i===idx)});
+    wrapper.classList.add('floated');
+    if(!projects.length){detail.innerHTML='<p style="color:#999;padding:20px">No projects in this stage.</p>';detail.classList.add('active');return}
+    var h='<div class="stage-detail-header"><div style="display:flex;align-items:center;gap:10px"><h3>'+label+'</h3><span class="stage-count-badge">'+projects.length+' project'+(projects.length>1?'s':'')+'</span></div><button class="stage-detail-close">×</button></div>';
+    h+='<table class="data-table"><thead><tr><th>SKU</th><th>Category</th><th>PM</th><th>Risk</th><th>PO</th><th>Next Action</th></tr></thead><tbody>';
+    projects.forEach(function(p){
+      h+='<tr><td><strong>'+esc(p.sku)+'</strong>'+(p.isASI?' <span class="risk-badge risk-none" style="font-size:9px">ASI</span>':'')+'</td><td>'+esc(p.category)+'</td><td>'+esc(p.pm)+'</td><td>'+riskBadge(p.risk)+'</td><td>'+poBadge(p)+'</td><td style="max-width:350px">'+esc(p.action)+'</td></tr>';
+    });
+    h+='</tbody></table>';
+    detail.innerHTML=h;
+    var closeBtn=detail.querySelector('.stage-detail-close');
+    if(closeBtn) closeBtn.addEventListener('click', function(){self.closeDetail()});
+    setTimeout(function(){detail.classList.add('active')},50);
+  };
+  self.closeDetail = function(){
+    self.activeIdx=-1;
+    var wrapper=document.getElementById(self.ids.wrapper);
+    var detail=document.getElementById(self.ids.detail);
+    var flow=document.getElementById(self.ids.flow);
+    detail.classList.remove('active');
+    flow.querySelectorAll('.pipeline-stage').forEach(function(s){s.classList.remove('active')});
+    setTimeout(function(){wrapper.classList.remove('floated');detail.innerHTML=''},400);
+  };
+  self.initToggle = function(){
+    var sel='#'+self.ids.asiToggle+' .toggle-btn';
+    document.querySelectorAll(sel).forEach(function(btn){
+      btn.addEventListener('click',function(){
+        document.querySelectorAll(sel).forEach(function(b){b.classList.remove('active')});
+        this.classList.add('active');
+        self.asiFilter=this.getAttribute('data-val');
+        self.closeDetail();
+        self.render();
+      });
+    });
+  };
+  return self;
 }
+
+var pipelineUS = PipelineView(pipelineUSData, {flow:'pipelineFlow',  wrapper:'pipelineWrapper',  detail:'stageDetail',  asiToggle:'f2-asi-toggle'});
+var pipelineMX = PipelineView(pipelineMXData, {flow:'pipelineFlowMX',wrapper:'pipelineWrapperMX',detail:'stageDetailMX',asiToggle:'f2mx-asi-toggle'});
 
 // ===== PAGE 3: WEEKLY TRACKER =====
 // ASI/NPD filter for Weekly Tracker. Default: hide ASI (NPD-only).
@@ -541,9 +587,8 @@ function renderPage3(){
     if(p.category&&!catS[p.category]){cats.push(p.category);catS[p.category]=true}
     if(p.poBuyer&&!buyS[p.poBuyer]){buyers.push(p.poBuyer);buyS[p.poBuyer]=true}
   });
-  pms.sort();cats.sort();buyers.sort();
+  pms.sort();buyers.sort();
   var pmSel=document.getElementById('f3-pm');pms.forEach(function(pm){var o=document.createElement('option');o.value=pm;o.textContent=pm;pmSel.appendChild(o)});
-  var catSel=document.getElementById('f3-cat');cats.forEach(function(c){var o=document.createElement('option');o.value=c;o.textContent=c;catSel.appendChild(o)});
   var buySel=document.getElementById('f3-buyer');buyers.forEach(function(b){var o=document.createElement('option');o.value=b;o.textContent=b;buySel.appendChild(o)});
   document.querySelectorAll('#f3-asi-toggle .toggle-btn').forEach(function(btn){
     btn.addEventListener('click',function(){
@@ -556,13 +601,13 @@ function renderPage3(){
   filterPage3();
 }
 function filterPage3(){
-  var pmF=document.getElementById('f3-pm').value,catF=document.getElementById('f3-cat').value,riskF=document.getElementById('f3-risk').value,locF=document.getElementById('f3-loc').value,poF=document.getElementById('f3-po').value,buyerF=document.getElementById('f3-buyer').value,searchF=document.getElementById('f3-search').value.toLowerCase();
+  var pmF=document.getElementById('f3-pm').value,locF=document.getElementById('f3-loc').value,poF=document.getElementById('f3-po').value,buyerF=document.getElementById('f3-buyer').value,searchF=document.getElementById('f3-search').value.toLowerCase();
   var body=document.getElementById('page3Body'),html='',lastPM='';
   page3Data.forEach(function(p){
     if(!p.sku)return;
     if(currentP3ASIFilter==='NPD'&&p.isASI)return;
     if(currentP3ASIFilter==='ASI'&&!p.isASI)return;
-    if(pmF&&p.pm!==pmF)return;if(catF&&p.category!==catF)return;if(riskF&&p.risk!==riskF)return;if(locF&&p.location!==locF)return;if(poF&&p.poStatus!==poF)return;if(buyerF&&p.poBuyer!==buyerF)return;
+    if(pmF&&p.pm!==pmF)return;if(locF&&p.location!==locF)return;if(poF&&p.poStatus!==poF)return;if(buyerF&&p.poBuyer!==buyerF)return;
     if(searchF&&JSON.stringify(p).toLowerCase().indexOf(searchF)===-1)return;
     if(p.pmSection&&p.pmSection!==lastPM){lastPM=p.pmSection;html+='<tr class="section-header"><td colspan="13">'+esc(pmEnglish[p.pmSection]||p.pmSection)+'</td></tr>'}
     var isT=(p.currentStatus==='—'||p.currentStatus==='-')&&p.issue&&p.issue.indexOf('终止')!==-1;
@@ -574,7 +619,7 @@ function filterPage3(){
 }
 
 // ===== INIT =====
-renderStats();initPage1();initP2ASIToggle();renderPipeline();renderPage3();if(p2FilteredCount(0)>0)showStageDetail(0);
+renderStats();initPage1();pipelineUS.initToggle();pipelineMX.initToggle();pipelineUS.render();pipelineMX.render();renderPage3();if(pipelineUS.filteredCount(0)>0)pipelineUS.showDetail(0);
 
 </script>
 </body>

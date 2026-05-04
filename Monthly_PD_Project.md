@@ -1,8 +1,8 @@
 # Monthly PD Report Project
 
-*最后更新：2026-04-30*
+*最后更新：2026-05-04*
 *负责人：Summer Tan (PMO)*
-*状态：HTML 已上线（4-21 胡总确认），构建系统重构完成（template + build.py + translations.json），中英双版自动产出，4-30 加入产品渲染图自动抽取 + umbrella SKU 拆卡*
+*状态：HTML 已上线（4-21 胡总确认），构建系统重构完成（template + build.py + translations.json），中英双版自动产出。5-04 大改：纯镜像 PD Table 重建 + Stats Bar 重做 + Pipeline US/MX 拆分 + ASI/NPD filter + Placeholder 占位卡片 + Category 合并 + "Other" 收纳。*
 
 ---
 
@@ -195,21 +195,43 @@ YEAR = '2026'
 
 > 当前 HTML 形态记录如下，但 Summer 仍有不少改造想法。**本次更新只稳数据源，HTML 改造单独再聊**，详见 Todo_List。
 
-**三页结构：**
-- **Page 1: PD Table（Sales 选品目录）** — 卡片布局，按 Category 分组，点击展开详情弹窗。**ASI 和 MP 项目不显示卡片**（2026-05-04 改）。Filter: **For Sales (active) / All toggle**（默认 ON）、Category dropdown、PO toggle、Search box
-- **Page 2: Pipeline Timeline** — 横向 **11 阶段**（Kick off → MP，2026-05-04 把 Inspection 合并进 MP）。每阶段显示项目数 + 点击下钻。**默认进 tab 自动激活 Kick off**。详情表含 SKU / Category / PM / Risk / **PO** / Next Action 列。**MP 项目仍在 Pipeline 上显示**。
-- **Page 3: Weekly Tracker** — 项目进度详情，Filter: PM / Category / Risk / Location / **PO (Placed/No PO)** / **For (buyer dropdown)** / Search。**MP 项目仍在 Tracker 详情列表里**。
+**四页结构（2026-05-04 加 MX 拆分 + ASI filter + Placeholder 卡片）：**
+- **Page 1: PD Table（Sales 选品目录）** — 卡片布局，按**合并后的 canonical category** 分组（详见下方分类规则），每段内 PD Table 真卡在前、placeholder 卡在后。**ASI 和 MP 项目不显示卡片**；**Tracker 有但 PD Table 没的 SKU 渲染成虚线占位卡片**（PENDING 标 + 黄底）。Filter: **For Sales (active) / All toggle**（默认 ON，但 placeholder 永远显示）、Category dropdown、PO toggle、Search box。
+- **Page 2A: Pipeline US** — 横向 **11 阶段**（Kick off → MP，Inspection 合并进 MP）。**只显示非 -MX SKU**。每阶段显示项目数 + 点击下钻。**默认进 tab 自动激活 Kick off**。详情表含 SKU / Category / PM / Risk / **PO** / Next Action 列。顶栏右上角 **Type toggle**（NPD only / ASI only / All，默认 NPD only）— 切换时实时重算各阶段计数。
+- **Page 2B: Pipeline MX** — 与 Pipeline US 同结构、独立的 ASI filter / 展开状态。**只显示 -MX 后缀 SKU**（严格 `endswith('-MX')`，不模糊匹配）。
+- **Page 3: Weekly Tracker** — 项目进度详情，Filter: **PM / Location / PO / For (buyer) / Search**（5-04 精简，去掉 Category 和 Risk dropdown）+ 右上角 **Type toggle**（NPD only / ASI only / All，默认 NPD only）。**MP 项目仍在 Tracker 详情列表里**。
+
+**Page 1 Category 合并规则（2026-05-04 加）：**
+PD Table / Tracker 里 PM 写的 category 字段五花八门（"Microwave Oven" / "T1 Microwave" / "Water Kettle" / "Kettle (CA)"…），build.py 用 `CATEGORY_RULES` 关键字匹配统一映射到 canonical bucket。当前 19 条规则，按"具体优先"顺序匹配（如 "Air Fryer (Oven)" 必须排在 "Oven" 之前）：
+- **Air Fryer (Oven)** vs **Air Fryers** 分开（Summer 2026-05-04 确认，烤箱-空气炸锅一体机和普通空气炸锅是不同品类）
+- **Microwave** 收 "Microwave / Microwave Oven / Microwave (MX) / T1 Microwave"
+- **Kettle** 收 "Kettle / Water Kettle / Kettle (CA) / Kettle (EU/UK)"
+- **Iceman** 收 "ICEMAN Dispenser / Ice Maker / Icemaker+water dispenser / Slush Maker / T1 ICEMAN / T1 Slushy"
+- **Mixer** 收 "Hand Mixer / Stand Mixer"
+- **Blender** 收 "Hand Blender"
+- **Pressure Cooker** 收 "MULTI-PRESSURE COOKER"
+- 其它 Slow Cooker / Rice Cooker / Deep Fryer / Bread Maker / Roaster Oven / Oven / Coffee / Griddle / Vacuum / Grill / Ice Cream / Water Dispenser 按关键字归并
+
+**< 3 个品的 category 合并为 "Other"**（Summer 2026-05-04 确认，避免太多碎片化分组）：
+- 阈值 `SMALL_CAT_THRESHOLD = 3` 在 build.py main() 里，跑完 page1+placeholder 之后统计每 bucket card 数，<3 的全部 reassign 到 "Other"
+- 模板里 "Other" 永远 pin 到所有 category 段的最后
+
+**Placeholder 卡片（2026-05-04 加）：**
+- Tracker 有但 PD Table 没的 SKU（且不是 ASI、不是 MP）→ 渲染虚线黄边占位卡，左上角橙色 "PENDING" 小标，卡片底部斜体 "Awaiting PM input"
+- 点击 → 简化 modal，黄底 banner "Awaiting PM input. PM hasn't supplied commercial info yet" + 仅显示 Tracker 字段（Issues / Next Action / CRD）
+- **计入所有 stats**（Total / High Risk / Mid Risk）；Stat number == Risk Detail Panel 行数（同一 filter）
+- For Sales toggle ON 时 placeholder 仍然显示（Summer 2026-05-04 确认，要让 Sales 也看到这些缺数据的项目）
 
 **顶栏 Stats Bar（2026-05-04 大改）：**
 - 5 个浮动可点击卡片：**Total Projects / High Risk / Medium Risk / Tier 1 (CSM) / Project Released**（旧版 In MP 改名）
 - 视觉：白色圆角卡片 + 顶部色条（Total/T1=深蓝渐变, High=红, Mid=橙, Released=绿），数字统一深蓝
-- **新计数规则（Shine + Summer 2026-05-04 确认）：**
-  - `Total Projects` = NPD + ASI - MP（**不再等于 page1 卡片数**）
-  - `High Risk / Medium Risk` = page1 cards 上的 risk 计数（NPD 非 MP）
+- **新计数规则（Shine + Summer 2026-05-04 确认，5-04 晚再改一次让 stat == panel）：**
+  - `Total Projects` = page1 visible cards (有 category) + ASI 非 MP（**不再等于 page1 卡片数**）。Placeholder 一旦获得 category（被合并到 "Other" 时）就计入 visible。
+  - `High Risk / Medium Risk` = **Tracker 行计数**（risk 匹配 + 非 ASI + 非 MP）。**含 placeholder**（Tracker 有 PD Table 没的也算）。**与 Risk Detail Panel 同一 filter，stat 数 == panel 数**。
   - `Tier 1 (CSM)` = Tracker 全部 T1 项目（**包含 MP T1**，唯一例外）
   - `Project Released` = Tracker Current Status="MP" **或** "Inspection" 的全部 SKU 数（Pipeline 把 Inspection 合并进了 MP 阶段，所以 Project Released 也包含两种状态——保持 stat 数 = Pipeline MP 列 = Released 下拉行数）
 - 交互：
-  - Total → 跳 Pipeline tab
+  - Total → 跳 Pipeline US tab
   - High / Mid → 展开 Risk Detail Panel（SKU/PM/Status/Issues/NextAction/CRD/Location 列）
   - **Project Released** → 展开 Released Detail Panel（**SKU / PM / Category / PO Status / Buyer / CRD** 列；**不展示卡片，只看清单**——MP 不需要业务字段）
   - T1 → 筛选 Page 1 卡片
@@ -240,12 +262,22 @@ YEAR = '2026'
 - 不点名 PM 个人，自动从 `PM_SECTION_TO_CATEGORIES` 字典查映射
 - 阈值 ≥3 是为了避免单个 SKU 缺数据触发 category-级 warning
 
-**双语输出（4-29 加）：**
+**双语输出（4-29 加，5-04 翻译字典扩到 ~294 条）：**
 - 每次跑 build 同时产出 CN（给 Shine + 国内）和 EN（给 US Sales）两份 HTML
-- 翻译字典：`Monthly PD Report/translations.json`，约 140 条 PM 写的中文短语 → 英文映射
+- 翻译字典：`Monthly PD Report/translations.json`，**~294 条** PM 写的中文短语 → 英文映射
 - 自动翻译字段：Page1 (currentStatus/category/crd) + Page3 (issue/nextAction/currentStatus/category/poRaw/crd) + Pipeline projects (action/category)
 - 不翻译：SKU、PM 名字、buyer 名字、英文/数字、PD Table 预填的英文 description/features
-- build.py 报漏译 → Summer 加进 translations.json 即可（不改 build.py）
+- build.py 报漏译 → 对话里 Claude 翻译 → 加进 translations.json（不改 build.py，不调 Anthropic API；详见 §5.5 + memory `feedback_translation_via_chat`）
+
+**OneDrive Files On-Demand bug 应对（5-04 多次踩坑后总结）：**
+- 现象：xlsx 文件大小看着正常，openpyxl 读出 BadZipFile（"File is not a zip file"）。读 raw bytes 是全 0。
+- 根因：OneDrive Files On-Demand 把文件标记为云端占位，本地没真正下载，沙箱看到的就是空壳
+- 防御：`build.py` 和 `rebuild_pdtable.py` 都内置 fallback —— 项目目录读不到时自动降级到 `/sessions/<id>/mnt/uploads/` 找 chat 上传
+- Cowork 上传也可能踩雷：上传后的文件几秒内会被 OneDrive 同步进程"回收"成全 0。**Claude 拿到上传应**第一时间** cp 到 `/sessions/<id>/tmp/` 锁住**，再用本地拷贝继续工作
+- Summer 端最稳的传文件方法：
+  1. 文件夹里右键 → "Always keep on this device" → 等图标变实心绿勾 ✓
+  2. 或 Excel 里打开一次强制 hydrate → 关闭再上传
+  3. 或从 OneDrive 网页版下载到非 OneDrive 路径（如 Downloads/）再上传
 
 ---
 
@@ -304,8 +336,8 @@ SPLIT_UMBRELLA_SKUS = {
 ## 8. 构建系统（4-29 重构 + 5-04 大改）
 
 **核心文件（`Monthly PD Report/`）：**
-- `template.html` — 完整单文件 HTML 模板。数据位置用 6 个占位符（5-04 加了 `{{RELEASED_DATA}}`）：
-  - `{{PAGE1_DATA}}`、`{{PIPELINE_DATA}}`、`{{PAGE3_DATA}}`、`{{SUMMARY_STATS}}`、`{{RELEASED_DATA}}`、`{{BANNER_BLOCK}}`
+- `template.html` — 完整单文件 HTML 模板。数据位置用 7 个占位符（5-04 PIPELINE_DATA 拆成 US/MX 两个）：
+  - `{{PAGE1_DATA}}`、`{{PIPELINE_US_DATA}}`、`{{PIPELINE_MX_DATA}}`、`{{PAGE3_DATA}}`、`{{SUMMARY_STATS}}`、`{{RELEASED_DATA}}`、`{{BANNER_BLOCK}}`
 - `build.py` — HTML 构建脚本。读三个 xlsx + 抽 PD updates 图 → 应用 ASI/MP 过滤 → 渲染 5 份 JSON + banner HTML → 灌进模板 → 输出
 - `rebuild_pdtable.py` — **新（5-04）** PD Table 重建脚本（详见 §5.2）。一键完成 transpose + manual_additions + 自动 Tracker 比对。
 - `pd_table_config.json` — **新（5-04）** ASI / umbrella / manual_additions 配置（详见 §5.2.1）。**两个脚本都读这个文件**。
@@ -330,8 +362,8 @@ SPLIT_UMBRELLA_SKUS = {
         ↓ load_tracker / load_pd_table / load_project_list / extract_sku_images
     内存 dict + images
         ↓ compute_mp_set (Tracker Current Status='MP') + asi_set (config)
-        ↓ build_page1_data (排除 ASI 和 MP) / build_page3_data / build_pipeline_data
-    JSON × 4
+        ↓ build_page1_data (排除 ASI 和 MP) / build_page3_data (带 isASI 标签) / build_pipeline_data × 2 (US/MX 按 -MX 后缀拆，各自带 isASI 标签)
+    JSON × 5（page1 + pipelineUS + pipelineMX + page3 + released）
         ↓ build_summary_stats(page1, tracker, asi_set, mp_set)
     summaryStats {total, high, mid, t1, released}
         ↓ build_released_data (MP SKU 列表，给 Project Released 下拉用)
@@ -346,6 +378,18 @@ SPLIT_UMBRELLA_SKUS = {
 
 **Pipeline 11 阶段（5-04 改，Inspection 合并进 MP）：**
 Kick off → Detail Design → Prototype → Tooling → FOT → EB → Culinary EB → Culinary Claims → PP → Culinary PP → MP
+
+**Pipeline US/MX 拆分（5-04 加）：**
+- `is_mx_sku(sku)` = `sku.upper().endswith('-MX')` —— 严格后缀匹配，不模糊匹配
+- main() 把 tracker_rows 拆成 us_rows + mx_rows，各自跑一次 `build_pipeline_data`
+- 模板里 `PipelineView(data, ids)` 是工厂函数，US 和 MX 各实例化一次，独立 ASI filter / 展开状态 / DOM
+- 状态映射不到 Pipeline 阶段的 SKU（如 `RJ55-7-VN-MX / SMR-VN-MX` 状态是"—"）会被忽略，跟 US 行为一致
+
+**ASI / NPD filter（5-04 加）：**
+- `build_page3_data` 和 `build_pipeline_data` 都接 `asi_set`，每条数据加 `isASI` 字段
+- Page 2 (Pipeline US + MX) 和 Page 3 (Weekly Tracker) 顶部右上角 Type toggle：`NPD only` / `ASI only` / `All`，默认 NPD only
+- Pipeline 切 filter 时各阶段计数实时重算（不只是隐藏行），并自动 close 已展开的 stage 避免数据 stale
+- ASI 行 / 项目带灰色 `ASI` 小标签
 
 **图片抽取关键函数（`extract_sku_images`）：**
 - 遍历 PD updates 每个 sheet 的 `ws._images`

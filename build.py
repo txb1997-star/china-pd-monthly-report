@@ -181,6 +181,50 @@ PM_SECTION_ORDER = [
 # -------------------------------------------------------------
 # Helpers
 # -------------------------------------------------------------
+# Canonical category buckets — Summer 2026-05-04. Page 1 cards group by these.
+# Order matters: more-specific keywords first (e.g. "Air Fryer (Oven)" must
+# match before "Air Fryers" or "Oven"). NEVER add fuzzy/aggressive rules
+# without asking Summer first.
+CATEGORY_RULES = [
+    ('Air Fryer (Oven)', ['air fryer (oven)', 'air fryer oven']),
+    ('Air Fryers',       ['air fryer', 'air fry']),
+    ('Microwave',        ['microwave']),
+    ('Pressure Cooker',  ['pressure']),
+    ('Slow Cooker',      ['slow']),
+    ('Rice Cooker',      ['rice']),
+    ('Deep Fryer',       ['deep fryer', 'deep']),
+    ('Roaster Oven',     ['roaster']),
+    ('Bread Maker',      ['bread']),
+    ('Ice Cream',        ['ice cream']),
+    ('Iceman',           ['iceman', 'ice maker', 'icemaker', 'slush']),
+    ('Water Dispenser',  ['water dispenser', 'dispenser']),
+    ('Coffee',           ['coffee']),
+    ('Griddle',          ['griddle']),
+    ('Blender',          ['blender']),
+    ('Mixer',            ['mixer']),
+    ('Vacuum',           ['vacuum']),
+    ('Kettle',           ['kettle']),
+    ('Oven',             ['oven']),
+    ('Grill',            ['grill', 'panini']),
+]
+
+
+def normalize_category(raw):
+    """Map a free-text category to one canonical bucket. Empty stays empty;
+    unknown strings pass through unchanged so we don't silently lose data."""
+    if not raw:
+        return ''
+    s = str(raw).strip()
+    if not s:
+        return ''
+    sl = s.lower()
+    for canonical, kws in CATEGORY_RULES:
+        for kw in kws:
+            if kw in sl:
+                return canonical
+    return s
+
+
 def cellstr(v):
     """Stringify a cell value, treating None as empty."""
     if v is None:
@@ -213,6 +257,15 @@ def is_pm_section_header(value):
         return False
     s = str(value).strip()
     return s in PM_SECTION_ORDER
+
+
+def is_mx_sku(sku):
+    """SKU is part of the Mexico pipeline if its last hyphen-delimited token is MX.
+    Examples: 'RJ40-8-MX' -> True, 'RJ55-7-VN-MX / SMR-VN-MX' -> True (ends -MX),
+    'RJ50-SFDAF-25D' -> False. Confirmed by Summer 2026-05-04."""
+    if not sku:
+        return False
+    return str(sku).strip().upper().endswith('-MX')
 
 
 def clean_status(s):
@@ -665,7 +718,7 @@ def build_page1_data(pd_main, tracker_rows, white_list, asi_set, mp_set, images=
                 # Sales card view.
                 item = {
                     'sku': variant_sku,
-                    'category': rec.get('category', ''),
+                    'category': normalize_category(rec.get('category', '')),
                     'tier': rec.get('tier', ''),
                     'brand': rec.get('brand', ''),
                     'description': rec.get('description', ''),
@@ -704,13 +757,62 @@ def build_page1_data(pd_main, tracker_rows, white_list, asi_set, mp_set, images=
     return items
 
 
-def build_page3_data(tracker_rows, asi_set=None):
+
+def build_placeholder_cards(tracker_rows, pd_main, asi_set, mp_set, images=None):
+    """Cards for SKUs that exist in Tracker but not in PD Table — PM hasn't
+    filled commercial info yet. Renders as a dashed "Pending PM Input" card on
+    Page 1 so PMO/Sales can still see they exist + count them in stats. ASI
+    and MP SKUs are skipped (ASI = not on Page 1 by design; MP = already
+    Released).
+    """
+    images = images or {}
+    pd_skus = set(pd_main.keys())
+    items = []
+    for row in tracker_rows:
+        sku = row.get('sku') or ''
+        if not sku:
+            continue
+        if sku in pd_skus or sku in asi_set or sku in mp_set:
+            continue
+        items.append({
+            'sku': sku,
+            'category': normalize_category(row.get('category') or ''),
+            'tier': row.get('tier') or '',
+            'pm': row.get('pm') or '',
+            'pmSection': row.get('pm_section') or '',
+            'currentStatus': row.get('current_status') or '',
+            'risk': row.get('risk') or '',
+            'crd': row.get('crd') or '',
+            'issue': row.get('issue') or '',
+            'nextAction': row.get('next_action') or '',
+            'image': images.get(sku, ''),
+            'isPlaceholder': True,
+            # Empty commercial fields (modal renders banner instead)
+            'description': '', 'topFeature': '', 'uf1': '', 'uf2': '', 'uf3': '',
+            'msrp': '', 'sampleETA': '', 'poPlaced': '',
+            'estInspection': '', 'factory': '', 'market': '',
+            'cost': '', 'buffer': '', 'port': '', 'duty': '', 'hc40': '',
+            'compModel': '', 'rjDiff': '', 'note1': '', 'note2': '',
+            'brand': '',
+            'onProjectList': False,
+        })
+    return items
+
+
+def build_page3_data(tracker_rows, asi_set=None, pd_main_skus=None, mp_set=None):
     """Page 3 = Weekly Tracker rows. One per Tracker SKU.
 
-    asi_set: optional set of SKUs flagged as After Sales Improvement; each row
-    is tagged `isASI=true` so the front-end NPD/ASI filter can hide them.
+    asi_set: SKUs flagged as After Sales Improvement → tag `isASI=true` so the
+        NPD/ASI filter can hide them.
+    pd_main_skus: set of SKUs that exist in PD Table (umbrella form). Used to
+        tag `inPdTable=true` so the Risk Detail Panel can mirror the stat-card
+        filter (stat counts only PD-Table-backed projects).
+    mp_set: SKUs whose Tracker status is MP. Tagged `isMP=true` so the Risk
+        Detail Panel can exclude already-released projects.
     """
     asi_set = asi_set or set()
+    pd_main_skus = pd_main_skus or set()
+    mp_set = mp_set or set()
     items = []
     for i, row in enumerate(tracker_rows, 1):
         po_status, po_buyer = parse_po(row['po_status'])
@@ -733,6 +835,8 @@ def build_page3_data(tracker_rows, asi_set=None):
             'poBuyer': po_buyer,
             'poRaw': row['po_status'],  # preserved for hover/tooltip if needed
             'isASI': row['sku'] in asi_set,
+            'inPdTable': row['sku'] in pd_main_skus,
+            'isMP': row['sku'] in mp_set,
         })
     return items
 
@@ -777,22 +881,35 @@ def build_pipeline_data(tracker_rows, asi_set=None):
     return {'counts': counts, 'labels': PIPELINE_LABELS, 'projects': projects}
 
 
-def build_summary_stats(page1, tracker_rows, asi_set, mp_set):
+def build_summary_stats(page1, tracker_rows, asi_set, mp_set, pd_main_skus):
     """Auto-compute the 5 stats bar numbers.
 
-    Rules (per Summer):
+    Rules:
     - Total Projects: NPD + ASI active dev (only MP excluded). page1 is
       filtered to exclude both ASI and MP for cards, so add ASI-non-MP back.
-    - High Risk / Medium Risk: page1 cards (NPD non-MP) — risk dimension
-      doesn't apply to ASI for now.
+    - High Risk / Medium Risk: Tracker rows where risk matches AND the SKU is
+      in PD Table AND it's not ASI AND it's not MP. (Same filter as the Risk
+      Detail Panel — stat number == panel row count by construction.) Counted
+      per Tracker row (umbrella) so an umbrella with 4 variants is 1, not 4.
     - Tier 1 (CSM): all T1 in Tracker including MP T1 (Summer's exception).
-    - Project Released: total MP count (independent stat, replaces 'In MP').
+    - Project Released: total MP count.
     """
     visible = [p for p in page1 if p.get('category')]
     asi_non_mp = asi_set - mp_set  # ASI items not yet MP — count toward Total
     total = len(visible) + len(asi_non_mp)
-    high = sum(1 for p in visible if p.get('risk') == '高')
-    mid = sum(1 for p in visible if p.get('risk') == '中')
+
+    def _is_panel_visible(r):
+        # Now inclusive of "Tracker has it but PD Table doesn't" — those
+        # render as placeholder cards on Page 1, so they should also count
+        # toward the High/Mid stats and the Risk Detail Panel.
+        sku = r.get('sku')
+        if not sku: return False
+        if sku in asi_set: return False
+        if sku in mp_set: return False
+        return True
+
+    high = sum(1 for r in tracker_rows if _is_panel_visible(r) and r.get('risk') == '高')
+    mid = sum(1 for r in tracker_rows if _is_panel_visible(r) and r.get('risk') == '中')
     t1 = sum(1 for r in tracker_rows if (r.get('tier') or '').strip() == '1')
     released = len(mp_set)
     return {'total': total, 'high': high, 'mid': mid, 't1': t1, 'released': released}
@@ -1092,11 +1209,12 @@ def build_banner_html(tracker_rows, pd_main, asi_set, mp_set):
 # -------------------------------------------------------------
 # Render & rotate
 # -------------------------------------------------------------
-def render_template(template_text, page1, pipeline, page3, stats, banner, released):
+def render_template(template_text, page1, pipeline_us, pipeline_mx, page3, stats, banner, released):
     """Substitute placeholders with JSON / HTML."""
     out = template_text
     out = out.replace('{{PAGE1_DATA}}', json.dumps(page1, ensure_ascii=False))
-    out = out.replace('{{PIPELINE_DATA}}', json.dumps(pipeline, ensure_ascii=False))
+    out = out.replace('{{PIPELINE_US_DATA}}', json.dumps(pipeline_us, ensure_ascii=False))
+    out = out.replace('{{PIPELINE_MX_DATA}}', json.dumps(pipeline_mx, ensure_ascii=False))
     out = out.replace('{{PAGE3_DATA}}', json.dumps(page3, ensure_ascii=False))
     out = out.replace('{{SUMMARY_STATS}}', json.dumps(stats, ensure_ascii=False))
     out = out.replace('{{RELEASED_DATA}}', json.dumps(released, ensure_ascii=False))
@@ -1164,12 +1282,33 @@ def main():
     print(f'      ASI exclusion: {len(asi_set)} SKUs from config')
     print(f'      MP/Released set: {len(mp_set)} SKUs from Tracker Current Status="MP"')
     page1 = build_page1_data(pd_main, tracker_rows, white_list, asi_set, mp_set, images)
-    print(f'      page1Data: {len(page1)} cards (ASI/MP excluded)')
-    page3 = build_page3_data(tracker_rows, asi_set)
+    placeholders = build_placeholder_cards(tracker_rows, pd_main, asi_set, mp_set, images)
+    page1.extend(placeholders)
+
+    # Merge small categories (< SMALL_CAT_THRESHOLD cards) into "Other".
+    # Threshold confirmed by Summer 2026-05-04: any bucket with < 3 cards
+    # collapses to keep Page 1 visually clean. Empty-category cards also fold
+    # into "Other" so they don't render as a no-name section.
+    SMALL_CAT_THRESHOLD = 3
+    from collections import Counter as _Counter
+    cat_counts = _Counter(p.get('category', '') for p in page1)
+    small_cats = {c for c, n in cat_counts.items() if n < SMALL_CAT_THRESHOLD}
+    moved = 0
+    for p in page1:
+        if p.get('category', '') in small_cats:
+            p['category'] = 'Other'
+            moved += 1
+    print(f'      page1Data: {len(page1)} cards (= {len(page1)-len(placeholders)} from PD Table + {len(placeholders)} placeholders; {moved} moved to "Other" from {len(small_cats)} small cats)')
+    page3 = build_page3_data(tracker_rows, asi_set, set(pd_main.keys()), mp_set)
     print(f'      page3Data: {len(page3)} tracker rows')
-    pipeline = build_pipeline_data(tracker_rows, asi_set)
-    print(f'      pipelineData: counts={pipeline["counts"]} (total={sum(pipeline["counts"])})')
-    stats = build_summary_stats(page1, tracker_rows, asi_set, mp_set)
+    # Pipeline split: -MX suffix → Mexico tab, all else → US tab.
+    us_rows = [r for r in tracker_rows if not is_mx_sku(r.get('sku', ''))]
+    mx_rows = [r for r in tracker_rows if is_mx_sku(r.get('sku', ''))]
+    pipeline_us = build_pipeline_data(us_rows, asi_set)
+    pipeline_mx = build_pipeline_data(mx_rows, asi_set)
+    print(f'      pipelineUSData: counts={pipeline_us["counts"]} (total={sum(pipeline_us["counts"])})')
+    print(f'      pipelineMXData: counts={pipeline_mx["counts"]} (total={sum(pipeline_mx["counts"])})')
+    stats = build_summary_stats(page1, tracker_rows, asi_set, mp_set, set(pd_main.keys()))
     print(f'      summaryStats: {stats}')
     released = build_released_data(tracker_rows, mp_set)
     print(f'      releasedData: {len(released)} entries (Project Released dropdown)')
@@ -1182,7 +1321,7 @@ def main():
 
     # 5a. Chinese version
     print(f'[5/5] Render + rotate (Chinese)')
-    html_out = render_template(template, page1, pipeline, page3, stats, banner, released)
+    html_out = render_template(template, page1, pipeline_us, pipeline_mx, page3, stats, banner, released)
     write_with_rotation(html_out, OUT_PATH, PREV_PATH)
 
     # 5b. English version
@@ -1191,9 +1330,11 @@ def main():
     print(f'      translations loaded: {len(trans)} entries')
     page1_en = translate_page1(page1, trans)
     page3_en = translate_page3(page3, trans)
-    pipeline_en = translate_pipeline(pipeline, trans)
+    pipeline_us_en = translate_pipeline(pipeline_us, trans)
+    pipeline_mx_en = translate_pipeline(pipeline_mx, trans)
 
-    untranslated = report_untranslated(page1_en, page3_en, pipeline_en, trans)
+    untranslated = report_untranslated(page1_en, page3_en, pipeline_us_en, trans)
+    untranslated |= report_untranslated(page1_en, page3_en, pipeline_mx_en, trans)
     if untranslated:
         print(f'      WARNING: {len(untranslated)} Chinese strings missing translation:')
         for s in sorted(untranslated)[:10]:
@@ -1203,7 +1344,7 @@ def main():
     else:
         print(f'      OK all Chinese strings translated')
 
-    html_out_en = render_template(template, page1_en, pipeline_en, page3_en, stats, banner, released)
+    html_out_en = render_template(template, page1_en, pipeline_us_en, pipeline_mx_en, page3_en, stats, banner, released)
     write_with_rotation(html_out_en, OUT_PATH_EN, PREV_PATH_EN)
     print('Done.')
 

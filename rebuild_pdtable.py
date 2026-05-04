@@ -26,19 +26,32 @@ from openpyxl.styles import Font, PatternFill, Alignment, Border, Side
 from openpyxl.utils import get_column_letter
 
 # === Paths ===
-PROJECT_DIR = Path("/sessions/wonderful-dreamy-thompson/mnt/PMO General Email Tracking/Monthly PD Report")
-TRACKER_DIR = Path("/sessions/wonderful-dreamy-thompson/mnt/PMO General Email Tracking/Weekly Tracker")
-UPLOADS_DIR = Path("/sessions/wonderful-dreamy-thompson/mnt/uploads")
-SCRATCH_OUT = Path("/sessions/wonderful-dreamy-thompson/mnt/outputs/Summers_Monthly_PD_Table.xlsx")
+# Derive from this script's location so the file can move sessions / containers
+# without hardcoding session ids (Cowork rotates them every reboot).
+import os as _os
+PROJECT_DIR = Path(__file__).resolve().parent
+TRACKER_DIR = PROJECT_DIR.parent / "Weekly Tracker"
+_HOME = _os.environ.get("HOME", "")
+if _HOME and "/sessions/" in _HOME:
+    UPLOADS_DIR = Path(_HOME) / "mnt" / "uploads"
+    SCRATCH_OUT = Path(_HOME) / "mnt" / "outputs" / "Summers_Monthly_PD_Table.xlsx"
+else:
+    UPLOADS_DIR = Path("/nonexistent-uploads")
+    SCRATCH_OUT = Path("/tmp/Summers_Monthly_PD_Table.xlsx")
+SCRATCH_OUT.parent.mkdir(parents=True, exist_ok=True)
 FINAL_OUT = PROJECT_DIR / "Summers_Monthly_PD_Table.xlsx"
 CONFIG_PATH = PROJECT_DIR / "pd_table_config.json"
+
+def _safe_exists(p):
+    try: return p.exists()
+    except (PermissionError, OSError): return False
 
 def find_pd_updates():
     """Find latest China PD updates xlsx. Try project folder first, fall back to uploads (OneDrive Files On-Demand bug workaround)."""
     candidates = []
     for d in (PROJECT_DIR, UPLOADS_DIR):
         candidates.extend(d.glob("China PD updates *.xlsx"))
-    candidates = [p for p in candidates if p.exists()]
+    candidates = [p for p in candidates if _safe_exists(p)]
     if not candidates:
         raise FileNotFoundError("No China PD updates xlsx found in project or uploads")
     candidates.sort(key=lambda p: p.stat().st_mtime, reverse=True)
