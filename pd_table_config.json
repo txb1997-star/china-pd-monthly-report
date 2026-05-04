@@ -1,0 +1,39 @@
+{
+  "_comment": "Summer's PD Table / HTML Build config. Edit this file to add/remove ASI projects, umbrella SKU mappings, or manual data injections. Reloaded by rebuild_pdtable.py and build.py each run.",
+
+  "after_sales_improvement": [
+    "RJ38-10-RDO-V2",
+    "RJ54-G-SS",
+    "RJ54-G-SS-D-BLK",
+    "RJ54-SS-15-D-UK-EU"
+  ],
+
+  "umbrella_to_variants": {
+    "RJ50-SFDAF-25D": ["RJ50-SFDAF-25D(SS)", "RJ50-BFDAF-25D(BLK)"],
+    "RJ64-10-new colors": ["RJ64-10-PTC", "RJ64-10-BTR", "RJ64-10-LVD"],
+    "RJ15-7-LL-D Color Variations": ["RJ15-7-LL-DR", "RJ15-7-LL-DG", "RJ15-7-LL-DW"]
+  },
+
+  "manual_additions": [
+    {
+      "_note": "RJ15-7-LL slow cooker — 3 color variants (Burgundy/Grey/White-Cream). PM hasn't added to PD updates yet; Summer is providing business info inline.",
+      "skus": ["RJ15-7-LL-DR", "RJ15-7-LL-DG", "RJ15-7-LL-DW"],
+      "pm": "Rowling Luo",
+      "fields": {
+        "Category": "Slow cooker",
+        "Tier": "3",
+        "Brand": "CHEFMAN",
+        "Description": "7qt slow cooker with digital display",
+        "Top Feature": "Digital display\nSS housing",
+        "Sales Sample ETA": "TBC",
+        "Est. 1st Inspection": "3/27/2026",
+        "Factory": "Kunge",
+        "Initial Market": "USA",
+        "1st Cost Estimate": "$12.85",
+        "Port": "Shanghai",
+        "Duty": "2.7%+10%",
+        "40'HC": "1672"
+      }
+    }
+  ]
+}

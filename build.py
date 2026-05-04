@@ -36,19 +36,70 @@ import openpyxl as ox
 MONTHLY_DIR = Path(__file__).resolve().parent
 BASE = MONTHLY_DIR.parent
 WEEKLY_DIR = BASE / 'Weekly Tracker'
+# Sandbox uploads dir (Cowork-injected). Fallback when OneDrive Files On-Demand
+# corrupts the project copy. Check both for the freshest readable Tracker.
+# Derive from $HOME (Cowork sets HOME=/sessions/<id>) so it follows the current
+# session automatically; the prior hardcoded session id breaks on every reboot.
+_HOME = os.environ.get('HOME', '')
+if _HOME and '/sessions/' in _HOME:
+    UPLOADS_DIR = Path(_HOME) / 'mnt' / 'uploads'
+else:
+    UPLOADS_DIR = Path('/nonexistent-uploads')
 
-TRACKER_PATH = WEEKLY_DIR / 'China_PD_Weekly_Tracker_WK17.xlsx'
+
+def _safe_exists(p):
+    """Path.exists() that tolerates PermissionError on cross-session mounts."""
+    try:
+        return p.exists()
+    except (PermissionError, OSError):
+        return False
+
+
+def _find_latest_tracker():
+    """Highest WKn xlsx that openpyxl can actually open. Falls back to uploads
+    if the OneDrive copy has a corrupt zip footer."""
+    candidates = []
+    for d in (WEEKLY_DIR, UPLOADS_DIR):
+        if _safe_exists(d):
+            candidates.extend(d.glob('China_PD_Weekly_Tracker_WK*.xlsx'))
+            candidates.extend(d.glob('China PD Weekly Tracker WK*.xlsx'))
+    candidates = [p for p in candidates if 'backup' not in p.name.lower()]
+    if not candidates:
+        return WEEKLY_DIR / 'China_PD_Weekly_Tracker_WK17.xlsx'  # legacy default
+    def wk_num(p):
+        import re as _re
+        m = _re.search(r'WK(\d+)', p.name)
+        return int(m.group(1)) if m else 0
+    candidates.sort(key=lambda p: (wk_num(p), p.stat().st_mtime), reverse=True)
+    for p in candidates:
+        try:
+            ox.load_workbook(p, data_only=True)
+            return p
+        except Exception:
+            continue
+    return candidates[0]  # let main() raise the real error
+
+
+TRACKER_PATH = _find_latest_tracker()
 PDTABLE_PATH = MONTHLY_DIR / 'Summers_Monthly_PD_Table.xlsx'
 PROJLIST_PATH = MONTHLY_DIR / 'Project list.xlsx'
 # Source of embedded product images. Auto-detect the latest 'China PD updates *.xlsx'
 # in MONTHLY_DIR by mtime, so Summer can drop in next month's file (e.g. 'China PD
 # updates May 2026.xlsx') without editing build.py.
 def _find_latest_pd_updates():
-    candidates = sorted(
-        MONTHLY_DIR.glob('China PD updates *.xlsx'),
-        key=lambda p: p.stat().st_mtime,
-        reverse=True,
-    )
+    """Newest readable 'China PD updates *.xlsx'. Project first, then uploads
+    (OneDrive Files On-Demand bug)."""
+    candidates = []
+    for d in (MONTHLY_DIR, UPLOADS_DIR):
+        if _safe_exists(d):
+            candidates.extend(d.glob('China PD updates *.xlsx'))
+    candidates.sort(key=lambda p: p.stat().st_mtime, reverse=True)
+    for p in candidates:
+        try:
+            ox.load_workbook(p, data_only=True)
+            return p
+        except Exception:
+            continue
     return candidates[0] if candidates else None
 
 PDUPDATES_PATH = _find_latest_pd_updates()
@@ -83,8 +134,9 @@ SCRATCH.mkdir(parents=True, exist_ok=True)
 PIPELINE_LABELS = [
     'Kick off', 'Detail Design', 'Prototype', 'Tooling',
     'FOT', 'EB', 'Culinary EB', 'Culinary Claims',
-    'PP', 'Culinary PP', 'MP', 'Inspection',
+    'PP', 'Culinary PP', 'MP',
 ]
+# Inspection merged into MP (Summer 2026-05-04: 'inspection 和 MP 是一样的')
 
 # Map currentStatus value → pipeline label index
 STATUS_TO_PIPELINE = {
@@ -98,8 +150,7 @@ STATUS_TO_PIPELINE = {
     'Culinary Claims': 7,
     'PP': 8,
     'Culinary PP': 9,
-    'MP': 10, 'MP中': 10,
-    'Inspection': 11,
+    'MP': 10, 'MP中': 10, 'Inspection': 10,
 }
 
 # Umbrella SKU expansion for Page 1 (Sales-facing cards).
@@ -541,11 +592,31 @@ def extract_sku_images(path):
 # -------------------------------------------------------------
 # Builders for the 4 JSON blocks
 # -------------------------------------------------------------
-def build_page1_data(pd_main, tracker_rows, white_list, images=None):
+def load_pd_config():
+    """Load Monthly PD Report/pd_table_config.json. Used for ASI exclusion etc.
+    Returns empty dict if file missing."""
+    config_path = MONTHLY_DIR / 'pd_table_config.json'
+    if not config_path.exists():
+        return {}
+    return json.loads(config_path.read_text(encoding='utf-8'))
+
+
+def compute_mp_set(tracker_rows):
+    """Return set of SKUs whose Weekly Tracker Current Status is MP or Inspection.
+    Both stages count as 'Project Released' (Summer 2026-05-04: 'Inspection 和 MP
+    是一样的')."""
+    released_statuses = {'MP', 'INSPECTION'}
+    return {r['sku'] for r in tracker_rows
+            if (r.get('current_status') or '').strip().upper() in released_statuses}
+
+
+def build_page1_data(pd_main, tracker_rows, white_list, asi_set, mp_set, images=None):
     """Page 1 = product cards. Driven by PD Table main rows.
 
     Joins each PD Table SKU with Tracker (for status/risk/crd/pm) by exact match.
     SKIPS SKUs that have no PD Table entry (no commercial info → can't draw card).
+    SKIPS SKUs in `asi_set` (After Sales Improvement — Page 2/3 only) and `mp_set`
+    (already MP — Project Released, separate stat card).
 
     `images` is an optional dict {sku → base64 data URI} produced by
     extract_sku_images(); SKUs without an image fall through to the placeholder
@@ -578,6 +649,11 @@ def build_page1_data(pd_main, tracker_rows, white_list, images=None):
             umbrella_image = images.get(sku, '')
 
             for variant_sku in variants:
+                # ASI / MP exclusion (Phase 2 — Project Released): these SKUs
+                # are intentionally hidden from Page 1 cards. ASI lives in
+                # config; MP is auto-detected from Tracker Current Status.
+                if variant_sku in asi_set or variant_sku in mp_set:
+                    continue
                 # Variant image: prefer the variant's own; fall back to the
                 # umbrella's image (one shared rendering for the whole group).
                 variant_image = images.get(variant_sku, '') or umbrella_image
@@ -628,8 +704,13 @@ def build_page1_data(pd_main, tracker_rows, white_list, images=None):
     return items
 
 
-def build_page3_data(tracker_rows):
-    """Page 3 = Weekly Tracker rows. One per Tracker SKU."""
+def build_page3_data(tracker_rows, asi_set=None):
+    """Page 3 = Weekly Tracker rows. One per Tracker SKU.
+
+    asi_set: optional set of SKUs flagged as After Sales Improvement; each row
+    is tagged `isASI=true` so the front-end NPD/ASI filter can hide them.
+    """
+    asi_set = asi_set or set()
     items = []
     for i, row in enumerate(tracker_rows, 1):
         po_status, po_buyer = parse_po(row['po_status'])
@@ -651,12 +732,19 @@ def build_page3_data(tracker_rows):
             'poStatus': po_status,
             'poBuyer': po_buyer,
             'poRaw': row['po_status'],  # preserved for hover/tooltip if needed
+            'isASI': row['sku'] in asi_set,
         })
     return items
 
 
-def build_pipeline_data(tracker_rows):
-    """Page 2 = Pipeline Timeline. 12 stages, projects grouped by current stage."""
+def build_pipeline_data(tracker_rows, asi_set=None):
+    """Page 2 = Pipeline Timeline. 12 stages, projects grouped by current stage.
+
+    asi_set: optional set of SKUs flagged as After Sales Improvement; each
+    project is tagged `isASI=true` so the front-end NPD/ASI filter can hide
+    them and the on-page count badges can be recomputed on filter change.
+    """
+    asi_set = asi_set or set()
     counts = [0] * len(PIPELINE_LABELS)
     projects = [[] for _ in PIPELINE_LABELS]
 
@@ -683,26 +771,51 @@ def build_pipeline_data(tracker_rows):
             'action': row['next_action'],
             'poStatus': po_status,
             'poBuyer': po_buyer,
+            'isASI': row['sku'] in asi_set,
         })
 
     return {'counts': counts, 'labels': PIPELINE_LABELS, 'projects': projects}
 
 
-def build_summary_stats(page1, page3):
-    """Auto-compute the 5 stats bar numbers from page1 — must match what users
-    see in the cards when 'All' toggle is selected (no PL filter, no other filter).
+def build_summary_stats(page1, tracker_rows, asi_set, mp_set):
+    """Auto-compute the 5 stats bar numbers.
 
-    filterPage1 hides cards with empty category, so the stats count only cards
-    that have a non-empty category (i.e. what is actually visible under 'All').
-    This guarantees stats == clickable card count.
+    Rules (per Summer):
+    - Total Projects: NPD + ASI active dev (only MP excluded). page1 is
+      filtered to exclude both ASI and MP for cards, so add ASI-non-MP back.
+    - High Risk / Medium Risk: page1 cards (NPD non-MP) — risk dimension
+      doesn't apply to ASI for now.
+    - Tier 1 (CSM): all T1 in Tracker including MP T1 (Summer's exception).
+    - Project Released: total MP count (independent stat, replaces 'In MP').
     """
     visible = [p for p in page1 if p.get('category')]
-    total = len(visible)
+    asi_non_mp = asi_set - mp_set  # ASI items not yet MP — count toward Total
+    total = len(visible) + len(asi_non_mp)
     high = sum(1 for p in visible if p.get('risk') == '高')
     mid = sum(1 for p in visible if p.get('risk') == '中')
-    mp = sum(1 for p in visible if 'mp' in (p.get('currentStatus') or '').lower())
-    t1 = sum(1 for p in visible if p.get('tier') == '1')
-    return {'total': total, 'high': high, 'mid': mid, 'mp': mp, 't1': t1}
+    t1 = sum(1 for r in tracker_rows if (r.get('tier') or '').strip() == '1')
+    released = len(mp_set)
+    return {'total': total, 'high': high, 'mid': mid, 't1': t1, 'released': released}
+
+
+def build_released_data(tracker_rows, mp_set):
+    """Data for the 'Project Released' stat card dropdown.
+    Columns: SKU / PM / Category / PO info / CRD."""
+    items = []
+    for r in tracker_rows:
+        if r['sku'] not in mp_set:
+            continue
+        po_status, po_buyer = parse_po(r.get('po_status', ''))
+        items.append({
+            'sku': r['sku'],
+            'pm': r.get('pm', ''),
+            'category': r.get('category', ''),
+            'poStatus': po_status,
+            'poBuyer': po_buyer,
+            'poRaw': r.get('po_status', ''),
+            'crd': r.get('crd', ''),
+        })
+    return items
 
 
 # -------------------------------------------------------------
@@ -919,22 +1032,27 @@ PM_SECTION_TO_CATEGORIES = {
 BANNER_PM_THRESHOLD = 3
 
 
-def build_banner_html(tracker_rows, pd_main, pending):
+def build_banner_html(tracker_rows, pd_main, asi_set, mp_set):
     """Detect PMs with systemic data gaps and surface their domain categories.
 
-    Logic:
-      - Count pending SKUs (待确认 / gap) per PM section.
-      - For each PM section with ≥ BANNER_PM_THRESHOLD pending SKUs, add their
-        domain categories (from PM_SECTION_TO_CATEGORIES) to the banner.
-      - Singletons (1-2 missing SKUs in a section) are treated as SKU-level
-        specifics and not surfaced — they're typically intentional gaps.
+    Logic (Phase 2 — adapted to new pure-mirror SOP):
+      - For each Tracker SKU that is NOT in PD Table, NOT in ASI list, NOT MP:
+        this is a gap — PM owes commercial info in next PD updates.
+      - Count gaps per PM section. If ≥ BANNER_PM_THRESHOLD, flag categories.
+      - Singletons (1-2 missing SKUs) are treated as SKU-level specifics and
+        not surfaced — they're typically intentional gaps.
 
     Returns: HTML string for banner block (empty if no PM hits threshold).
     """
-    # Count pending SKUs per PM section
+    pd_skus = set(pd_main.keys())
     pm_pending_count = {}
-    for p in pending:
-        section = p.get('pm_section') or ''
+    for r in tracker_rows:
+        sku = r.get('sku')
+        if not sku:
+            continue
+        if sku in pd_skus or sku in asi_set or sku in mp_set:
+            continue
+        section = r.get('pm_section') or ''
         if section:
             pm_pending_count[section] = pm_pending_count.get(section, 0) + 1
 
@@ -974,13 +1092,14 @@ def build_banner_html(tracker_rows, pd_main, pending):
 # -------------------------------------------------------------
 # Render & rotate
 # -------------------------------------------------------------
-def render_template(template_text, page1, pipeline, page3, stats, banner):
+def render_template(template_text, page1, pipeline, page3, stats, banner, released):
     """Substitute placeholders with JSON / HTML."""
     out = template_text
     out = out.replace('{{PAGE1_DATA}}', json.dumps(page1, ensure_ascii=False))
     out = out.replace('{{PIPELINE_DATA}}', json.dumps(pipeline, ensure_ascii=False))
     out = out.replace('{{PAGE3_DATA}}', json.dumps(page3, ensure_ascii=False))
     out = out.replace('{{SUMMARY_STATS}}', json.dumps(stats, ensure_ascii=False))
+    out = out.replace('{{RELEASED_DATA}}', json.dumps(released, ensure_ascii=False))
     out = out.replace('{{BANNER_BLOCK}}', banner)
     # Sanity: no placeholders should remain
     leftover = re.findall(r'\{\{[A-Z_]+\}\}', out)
@@ -1039,16 +1158,23 @@ def main():
     images = extract_sku_images(PDUPDATES_PATH)
 
     print(f'[3/5] Building data blocks')
-    page1 = build_page1_data(pd_main, tracker_rows, white_list, images)
-    print(f'      page1Data: {len(page1)} cards')
-    page3 = build_page3_data(tracker_rows)
+    config = load_pd_config()
+    asi_set = set(config.get('after_sales_improvement', []))
+    mp_set = compute_mp_set(tracker_rows)
+    print(f'      ASI exclusion: {len(asi_set)} SKUs from config')
+    print(f'      MP/Released set: {len(mp_set)} SKUs from Tracker Current Status="MP"')
+    page1 = build_page1_data(pd_main, tracker_rows, white_list, asi_set, mp_set, images)
+    print(f'      page1Data: {len(page1)} cards (ASI/MP excluded)')
+    page3 = build_page3_data(tracker_rows, asi_set)
     print(f'      page3Data: {len(page3)} tracker rows')
-    pipeline = build_pipeline_data(tracker_rows)
+    pipeline = build_pipeline_data(tracker_rows, asi_set)
     print(f'      pipelineData: counts={pipeline["counts"]} (total={sum(pipeline["counts"])})')
-    stats = build_summary_stats(page1, page3)
+    stats = build_summary_stats(page1, tracker_rows, asi_set, mp_set)
     print(f'      summaryStats: {stats}')
+    released = build_released_data(tracker_rows, mp_set)
+    print(f'      releasedData: {len(released)} entries (Project Released dropdown)')
 
-    banner = build_banner_html(tracker_rows, pd_main, pd_pending)
+    banner = build_banner_html(tracker_rows, pd_main, asi_set, mp_set)
     if banner:
         print(f'[4/5] Banner ON')
     else:
@@ -1056,7 +1182,7 @@ def main():
 
     # 5a. Chinese version
     print(f'[5/5] Render + rotate (Chinese)')
-    html_out = render_template(template, page1, pipeline, page3, stats, banner)
+    html_out = render_template(template, page1, pipeline, page3, stats, banner, released)
     write_with_rotation(html_out, OUT_PATH, PREV_PATH)
 
     # 5b. English version
@@ -1077,7 +1203,7 @@ def main():
     else:
         print(f'      OK all Chinese strings translated')
 
-    html_out_en = render_template(template, page1_en, pipeline_en, page3_en, stats, banner)
+    html_out_en = render_template(template, page1_en, pipeline_en, page3_en, stats, banner, released)
     write_with_rotation(html_out_en, OUT_PATH_EN, PREV_PATH_EN)
     print('Done.')
 

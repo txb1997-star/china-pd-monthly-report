@@ -26,10 +26,8 @@ body{font-family:'Segoe UI','Century Gothic',Arial,sans-serif;background:#f5f6fa
 .stat-card.sc-mid::before{background:#f39c12}
 .stat-card.sc-t1::before{background:linear-gradient(90deg,#1e3a5f,#2d5a8e)}
 .stat-card.sc-mp::before{background:#27ae60}
-.stat-card.sc-released::before{background:#27ae60}
 .stat-num{font-size:30px;font-weight:700;color:#1e3a5f;line-height:1.1}
 .stat-num.sc-mp-num{color:#27ae60}
-.stat-num.sc-released-num{color:#27ae60}
 .stat-label{font-size:11px;color:#7f8c8d;text-transform:uppercase;letter-spacing:.5px;margin-top:6px;font-weight:600}
 .risk-detail-panel{display:none;margin:0 32px 0;background:#fff;border-radius:0 0 12px 12px;box-shadow:0 2px 8px rgba(0,0,0,.06);overflow:hidden;animation:panelIn .2s ease}
 .risk-detail-panel.active{display:block;margin-bottom:16px}
@@ -205,9 +203,6 @@ tr.terminated td{text-decoration:line-through}
   </div>
 </div>
 <div class="tab-content" id="tab-pipeline">
-  <div class="filter-bar" style="margin-bottom:8px">
-    <div class="filter-group"><label>Type</label><div class="toggle-group" id="f2-asi-toggle"><button class="toggle-btn active" data-val="NPD">NPD only</button><button class="toggle-btn" data-val="ASI">ASI only</button><button class="toggle-btn" data-val="ALL">All</button></div></div>
-  </div>
   <div class="pipeline-container">
     <div class="pipeline-wrapper" id="pipelineWrapper">
       <div class="pipeline-flow" id="pipelineFlow"></div>
@@ -218,7 +213,6 @@ tr.terminated td{text-decoration:line-through}
 </div>
 <div class="tab-content" id="tab-tracker">
   <div class="filter-bar">
-    <div class="filter-group"><label>Type</label><div class="toggle-group" id="f3-asi-toggle"><button class="toggle-btn active" data-val="NPD">NPD only</button><button class="toggle-btn" data-val="ASI">ASI only</button><button class="toggle-btn" data-val="ALL">All</button></div></div>
     <div class="filter-group"><label>PM</label><select id="f3-pm" onchange="filterPage3()"><option value="">All</option></select></div>
     <div class="filter-group"><label>Category</label><select id="f3-cat" onchange="filterPage3()"><option value="">All</option></select></div>
     <div class="filter-group"><label>Risk</label><select id="f3-risk" onchange="filterPage3()"><option value="">All</option><option value="高">High</option><option value="中">Medium</option><option value="低">Low</option></select></div>
@@ -239,7 +233,6 @@ var page1Data = {{PAGE1_DATA}};
 var pipelineData = {{PIPELINE_DATA}};
 var page3Data = {{PAGE3_DATA}};
 var summaryStats = {{SUMMARY_STATS}};
-var releasedData = {{RELEASED_DATA}};
 function esc(s){if(!s)return'';var d=document.createElement('div');d.textContent=s;return d.innerHTML}
 function cleanDate(d){if(!d)return'';d=d.replace(' 00:00:00','');var m=d.match(/^(\d{4})-(\d{2})-(\d{2})/);if(m)return m[2]+'/'+m[3]+'/'+m[1];return d}
 function riskBadge(r){if(r==='\u9ad8')return'<span class="risk-badge risk-high">HIGH</span>';if(r==='\u4e2d')return'<span class="risk-badge risk-mid">MED</span>';if(r==='\u4f4e')return'<span class="risk-badge risk-low">LOW</span>';return'<span class="risk-badge risk-none">\u2014</span>'}
@@ -269,7 +262,7 @@ function poBadge(p){if(!p||!p.poStatus)return'<span style="color:#ccc">\u2014</s
 // Stats
 function renderStats(){
   var b=document.getElementById('statsBar');
-  b.innerHTML='<div class="home-btn" onclick="goHome()" title="Home"><span>HOME</span></div>'+'<div class="stat-card sc-total" onclick="statClick(\'total\')"><div class="stat-num">'+summaryStats.total+'</div><div class="stat-label">Total Projects</div></div>'+'<div class="stat-card sc-high" onclick="statClick(\'high\')"><div class="stat-num">'+summaryStats.high+'</div><div class="stat-label">High Risk</div></div>'+'<div class="stat-card sc-mid" onclick="statClick(\'mid\')"><div class="stat-num">'+summaryStats.mid+'</div><div class="stat-label">Medium Risk</div></div>'+'<div class="stat-card sc-t1" onclick="statClick(\'t1\')"><div class="stat-num">'+summaryStats.t1+'</div><div class="stat-label">Tier 1 (CSM)</div></div>'+'<div class="stat-card sc-released" onclick="statClick(\'released\')"><div class="stat-num sc-released-num">'+summaryStats.released+'</div><div class="stat-label">Project Released</div></div>';
+  b.innerHTML='<div class="home-btn" onclick="goHome()" title="Home"><span>HOME</span></div>'+'<div class="stat-card sc-total" onclick="statClick(\'total\')"><div class="stat-num">'+summaryStats.total+'</div><div class="stat-label">Total Projects</div></div>'+'<div class="stat-card sc-high" onclick="statClick(\'high\')"><div class="stat-num">'+summaryStats.high+'</div><div class="stat-label">High Risk</div></div>'+'<div class="stat-card sc-mid" onclick="statClick(\'mid\')"><div class="stat-num">'+summaryStats.mid+'</div><div class="stat-label">Medium Risk</div></div>'+'<div class="stat-card sc-t1" onclick="statClick(\'t1\')"><div class="stat-num">'+summaryStats.t1+'</div><div class="stat-label">Tier 1 (CSM)</div></div>'+'<div class="stat-card sc-mp" onclick="statClick(\'mp\')"><div class="stat-num">'+summaryStats.mp+'</div><div class="stat-label">In MP</div></div>';
 }
 
 function goHome(){closeRiskPanel();switchTab('pd-table');document.getElementById('f1-cat').value='';document.getElementById('f1-search').value='';document.querySelectorAll('#f1-po-toggle .toggle-btn').forEach(function(b){b.classList.toggle('active',b.getAttribute('data-val')==='')});document.querySelectorAll('#f1-pl-toggle .toggle-btn').forEach(function(b){b.classList.toggle('active',b.getAttribute('data-val')==='ON')});currentPLFilter='ON';filterPage1()}
@@ -288,13 +281,6 @@ function statClick(type){
     var panel=document.getElementById('riskPanel');
     if(currentRiskType===type && panel.classList.contains('active')){closeRiskPanel();return}
     showRiskDetail(type);
-    currentRiskType=type;
-    return;
-  }
-  if(type==='released'){
-    var panel=document.getElementById('riskPanel');
-    if(currentRiskType===type && panel.classList.contains('active')){closeRiskPanel();return}
-    showReleasedDetail();
     currentRiskType=type;
     return;
   }
@@ -318,21 +304,6 @@ function showRiskDetail(type){
   var h='<table class="risk-detail-table"><thead><tr><th>SKU</th><th>PM</th><th>Current Status</th><th>Issues / Risks</th><th>Next Action</th><th>CRD</th><th>Location</th></tr></thead><tbody>';
   items.forEach(function(p){
     h+='<tr><td><strong>'+esc(p.sku)+'</strong></td><td>'+esc(p.pm)+'</td><td>'+esc(p.currentStatus)+'</td><td class="issue-cell">'+esc(p.issue||'')+'</td><td class="issue-cell">'+esc(p.nextAction||'')+'</td><td>'+cleanDate(p.crd)+'</td><td>'+locBadge(p.location)+'</td></tr>';
-  });
-  h+='</tbody></table>';
-  document.getElementById('riskPanelBody').innerHTML=h;
-  document.getElementById('riskPanel').classList.add('active');
-}
-function showReleasedDetail(){
-  var items=releasedData||[];
-  document.getElementById('riskPanelTitle').textContent='Project Released ('+items.length+')';
-  var h='<table class="risk-detail-table"><thead><tr><th>SKU</th><th>PM</th><th>Category</th><th>PO Status</th><th>Buyer</th><th>CRD</th></tr></thead><tbody>';
-  items.forEach(function(p){
-    var poStatusBadge='';
-    if(p.poStatus==='Placed')poStatusBadge='<span class="status-badge status-china">Placed</span>';
-    else if(p.poStatus==='No PO')poStatusBadge='<span class="status-badge" style="background:#eee;color:#666">No PO</span>';
-    else poStatusBadge=esc(p.poStatus||'');
-    h+='<tr><td><strong>'+esc(p.sku)+'</strong></td><td>'+esc(p.pm||'')+'</td><td>'+esc(p.category||'')+'</td><td>'+poStatusBadge+'</td><td>'+esc(p.poBuyer||'')+'</td><td>'+cleanDate(p.crd||'')+'</td></tr>';
   });
   h+='</tbody></table>';
   document.getElementById('riskPanelBody').innerHTML=h;
@@ -464,29 +435,19 @@ document.getElementById('modalOverlay').addEventListener('click',function(e){if(
 document.addEventListener('keydown',function(e){if(e.key==='Escape')closeModal()});
 // ===== PAGE 2: PIPELINE =====
 var activePipelineIdx=-1;
-// ASI/NPD filter for Pipeline. Default: hide ASI (NPD-only). Values: 'NPD' | 'ASI' | 'ALL'.
-var currentP2ASIFilter='NPD';
-function p2KeepProject(p){
-  if(currentP2ASIFilter==='NPD' && p.isASI)return false;
-  if(currentP2ASIFilter==='ASI' && !p.isASI)return false;
-  return true;
-}
-function p2FilteredProjects(idx){return (pipelineData.projects[idx]||[]).filter(p2KeepProject)}
-function p2FilteredCount(idx){return p2FilteredProjects(idx).length}
 function renderPipeline(){
   var flow=document.getElementById('pipelineFlow'),html='';
   pipelineData.labels.forEach(function(label,i){
     if(i>0)html+='<div class="pipeline-connector"></div>';
-    var c=p2FilteredCount(i);
-    var hasItems=c>0;
+    var hasItems=pipelineData.counts[i]>0;
     html+='<div class="pipeline-stage '+(hasItems?'has-items':'no-items')+'" data-idx="'+i+'">'
-      +'<div class="pipeline-node"><div class="count">'+c+'</div><div class="plabel">'+label+'</div></div></div>';
+      +'<div class="pipeline-node"><div class="count">'+pipelineData.counts[i]+'</div><div class="plabel">'+label+'</div></div></div>';
   });
   flow.innerHTML=html;
   flow.querySelectorAll('.pipeline-stage').forEach(function(s){
     s.addEventListener('click',function(){
       var idx=parseInt(this.getAttribute('data-idx'));
-      if(p2FilteredCount(idx)===0)return;
+      if(pipelineData.counts[idx]===0)return;
       if(activePipelineIdx===idx){closePipelineDetail();return}
       showStageDetail(idx);
     });
@@ -496,15 +457,14 @@ function showStageDetail(idx){
   activePipelineIdx=idx;
   var wrapper=document.getElementById('pipelineWrapper');
   var detail=document.getElementById('stageDetail');
-  var label=pipelineData.labels[idx];
-  var projects=p2FilteredProjects(idx);
+  var label=pipelineData.labels[idx],projects=pipelineData.projects[idx];
   document.querySelectorAll('.pipeline-stage').forEach(function(s,i){s.classList.toggle('active',i===idx)});
   wrapper.classList.add('floated');
   if(!projects.length){detail.innerHTML='<p style="color:#999;padding:20px">No projects in this stage.</p>';detail.classList.add('active');return}
   var h='<div class="stage-detail-header"><div style="display:flex;align-items:center;gap:10px"><h3>'+label+'</h3><span class="stage-count-badge">'+projects.length+' project'+(projects.length>1?'s':'')+'</span></div><button class="stage-detail-close" onclick="closePipelineDetail()">\u00d7</button></div>';
   h+='<table class="data-table"><thead><tr><th>SKU</th><th>Category</th><th>PM</th><th>Risk</th><th>PO</th><th>Next Action</th></tr></thead><tbody>';
   projects.forEach(function(p){
-    h+='<tr><td><strong>'+esc(p.sku)+'</strong>'+(p.isASI?' <span class="risk-badge risk-none" style="font-size:9px">ASI</span>':'')+'</td><td>'+esc(p.category)+'</td><td>'+esc(p.pm)+'</td><td>'+riskBadge(p.risk)+'</td><td>'+poBadge(p)+'</td><td style="max-width:350px">'+esc(p.action)+'</td></tr>';
+    h+='<tr><td><strong>'+esc(p.sku)+'</strong></td><td>'+esc(p.category)+'</td><td>'+esc(p.pm)+'</td><td>'+riskBadge(p.risk)+'</td><td>'+poBadge(p)+'</td><td style="max-width:350px">'+esc(p.action)+'</td></tr>';
   });
   h+='</tbody></table>';
   detail.innerHTML=h;
@@ -518,22 +478,8 @@ function closePipelineDetail(){
   document.querySelectorAll('.pipeline-stage').forEach(function(s){s.classList.remove('active')});
   setTimeout(function(){wrapper.classList.remove('floated');detail.innerHTML=''},400);
 }
-function initP2ASIToggle(){
-  document.querySelectorAll('#f2-asi-toggle .toggle-btn').forEach(function(btn){
-    btn.addEventListener('click',function(){
-      document.querySelectorAll('#f2-asi-toggle .toggle-btn').forEach(function(b){b.classList.remove('active')});
-      this.classList.add('active');
-      currentP2ASIFilter=this.getAttribute('data-val');
-      // Close any open stage detail to avoid stale state
-      closePipelineDetail();
-      renderPipeline();
-    });
-  });
-}
 
 // ===== PAGE 3: WEEKLY TRACKER =====
-// ASI/NPD filter for Weekly Tracker. Default: hide ASI (NPD-only).
-var currentP3ASIFilter='NPD';
 function renderPage3(){
   var pms=[],pmS={},cats=[],catS={},buyers=[],buyS={};
   page3Data.forEach(function(p){
@@ -545,14 +491,6 @@ function renderPage3(){
   var pmSel=document.getElementById('f3-pm');pms.forEach(function(pm){var o=document.createElement('option');o.value=pm;o.textContent=pm;pmSel.appendChild(o)});
   var catSel=document.getElementById('f3-cat');cats.forEach(function(c){var o=document.createElement('option');o.value=c;o.textContent=c;catSel.appendChild(o)});
   var buySel=document.getElementById('f3-buyer');buyers.forEach(function(b){var o=document.createElement('option');o.value=b;o.textContent=b;buySel.appendChild(o)});
-  document.querySelectorAll('#f3-asi-toggle .toggle-btn').forEach(function(btn){
-    btn.addEventListener('click',function(){
-      document.querySelectorAll('#f3-asi-toggle .toggle-btn').forEach(function(b){b.classList.remove('active')});
-      this.classList.add('active');
-      currentP3ASIFilter=this.getAttribute('data-val');
-      filterPage3();
-    });
-  });
   filterPage3();
 }
 function filterPage3(){
@@ -560,21 +498,18 @@ function filterPage3(){
   var body=document.getElementById('page3Body'),html='',lastPM='';
   page3Data.forEach(function(p){
     if(!p.sku)return;
-    if(currentP3ASIFilter==='NPD'&&p.isASI)return;
-    if(currentP3ASIFilter==='ASI'&&!p.isASI)return;
     if(pmF&&p.pm!==pmF)return;if(catF&&p.category!==catF)return;if(riskF&&p.risk!==riskF)return;if(locF&&p.location!==locF)return;if(poF&&p.poStatus!==poF)return;if(buyerF&&p.poBuyer!==buyerF)return;
     if(searchF&&JSON.stringify(p).toLowerCase().indexOf(searchF)===-1)return;
     if(p.pmSection&&p.pmSection!==lastPM){lastPM=p.pmSection;html+='<tr class="section-header"><td colspan="13">'+esc(pmEnglish[p.pmSection]||p.pmSection)+'</td></tr>'}
-    var isT=(p.currentStatus==='—'||p.currentStatus==='-')&&p.issue&&p.issue.indexOf('终止')!==-1;
+    var isT=(p.currentStatus==='\u2014'||p.currentStatus==='-')&&p.issue&&p.issue.indexOf('\u7ec8\u6b62')!==-1;
     var rc=isT?'terminated':(p.tier==='1'?'t1-row':'');
-    var asiTag=p.isASI?' <span class="risk-badge risk-none" style="font-size:9px">ASI</span>':'';
-    html+='<tr class="'+rc+'"><td>'+esc(p.num)+'</td><td><strong>'+esc(p.sku)+'</strong>'+asiTag+'</td><td>'+esc(p.category)+'</td><td>'+riskBadge(p.risk)+'</td><td>'+esc(p.pm)+'</td><td>'+tierBadge(p.tier)+'</td><td>'+esc(p.currentStatus)+'</td><td style="max-width:220px;font-size:11.5px">'+esc(p.issue)+'</td><td style="max-width:220px;font-size:11.5px">'+esc(p.nextAction)+'</td><td>'+cleanDate(p.crd)+'</td><td>'+locBadge(p.location)+'</td><td>'+poBadge(p)+'</td><td style="font-size:11px;color:#999">'+cleanDate(p.lastUpdate)+'</td></tr>';
+    html+='<tr class="'+rc+'"><td>'+esc(p.num)+'</td><td><strong>'+esc(p.sku)+'</strong></td><td>'+esc(p.category)+'</td><td>'+riskBadge(p.risk)+'</td><td>'+esc(p.pm)+'</td><td>'+tierBadge(p.tier)+'</td><td>'+esc(p.currentStatus)+'</td><td style="max-width:220px;font-size:11.5px">'+esc(p.issue)+'</td><td style="max-width:220px;font-size:11.5px">'+esc(p.nextAction)+'</td><td>'+cleanDate(p.crd)+'</td><td>'+locBadge(p.location)+'</td><td>'+poBadge(p)+'</td><td style="font-size:11px;color:#999">'+cleanDate(p.lastUpdate)+'</td></tr>';
   });
   body.innerHTML=html;
 }
 
 // ===== INIT =====
-renderStats();initPage1();initP2ASIToggle();renderPipeline();renderPage3();if(p2FilteredCount(0)>0)showStageDetail(0);
+renderStats();initPage1();renderPipeline();renderPage3();if(pipelineData.counts[0]>0)showStageDetail(0);
 
 </script>
 </body>

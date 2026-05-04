@@ -96,25 +96,51 @@ HTML 通过 SKU join 三份数据源生成。**SKU = 唯一的 join key。**
 | 6 | Claude（沙箱） | 重跑 `python3 build.py` → EN 干净 0 warning |
 | 7 | 双方 | CN + EN 两份 HTML 是当月 / 当周月报，发给受众 |
 
-### 5.2 PD Table 更新（被动，Summer push 文件触发）
+### 5.2 PD Table 更新（被动，Summer push 文件触发）—— **2026-05-04 大改：纯镜像重建**
 
 **PM 提交截止日（胡总确认，2026-04-30 邮件通知全体 PM + Shine）：** 每月 26 号前，PM 必须确认 PD Table 和 Project List 已 up to date，SKU 与周报 Tracker 保持一致。
 
 **触发：** Shine 发新版 `China PD updates {月} {年}.xlsx` 给 Summer，**Summer 把文件给我**。
 
-**详细流程文档：** → [`China_PD_Table_Update.md`](China_PD_Table_Update.md)（字段映射、SKU 匹配规则、openpyxl 注意事项、gap analysis、PM 沟通模板）
+**详细流程文档：** → [`China_PD_Table_Update.md`](China_PD_Table_Update.md)
 
-**SOP 摘要：**
-1. 逐 Sheet 水平→纵向 transpose + 按 B 列 label 做字段映射（24 列）
-2. 精确 SKU 匹配覆盖现有行数据；不一致的标黄列出给 Summer 找 PM 确认
-3. Gap analysis：Tracker 有但 PD Table 无 → 列出让 PM 补商业信息
-4. 输出 FINAL + diff 摘要 + PM 中文消息 draft
-5. PM 回复后合并最终版，Summer 确认后转正
+**核心原则（2026-05-04 与上一版的关键差异）：**
+- **每月从零重建**：新 PD Table = 当前 PD updates 文件的纯镜像。**不读上一版作 baseline、不 merge、不保留 PM 已删除的 SKU。**
+- **保留隐藏列**：openpyxl 默认会读到 PM 隐藏的列，全部保留进 PD Table。
+- **TBD/TBC 占位符**：跳过（不是真产品）。
+- **多 SKU 单元格**：按换行/制表符拆分，每个 SKU 独立一行共享商业字段。
+- **不再做 SKU 一致性比对**：不是 §5.2 的事；交给 §5.2 完成后 build 阶段 / Tracker 比对自动出 diff。
+
+**新 SOP 摘要（一键脚本 `rebuild_pdtable.py`）：**
+1. 读 `Monthly PD Report/pd_table_config.json`（ASI 列表、umbrella 拆卡、manual_additions 等）
+2. 找最新 `China PD updates *.xlsx`（项目目录优先，否则 uploads；OneDrive Files On-Demand bug 自动 fallback）
+3. 逐 Sheet 水平→纵向 transpose + 按 B 列 label 做 24 列映射，跳过 TBD/TBC
+4. 追加 manual_additions 行（PM 还没填的 placeholder business info）
+5. 输出新 `Summers_Monthly_PD_Table.xlsx`（直接覆盖）
+6. **自动**对比 PD Table SKU 和最新 Weekly Tracker SKU，输出 3 段 diff：
+   - **A 类**：Tracker 有 PD Table 没有（已过滤 ASI/MP）→ PM 需补商业信息
+   - **B 类**：PD Table 有 Tracker 没有 → 项目状态待 PM 明确
+   - **C 类**：Tracker 已 MP（Project Released）→ 不需要 PD Table info
 
 **关键规则：**
 - **绝对不做 SKU 模糊匹配**（后缀有业务含义：SS/CA/CO/MX/D/M/AM 等）
 - **数据精度优先级：** Weekly Tracker > PD Table > Draft
-- **格式约束：** 24 列结构、Century Gothic 10pt、Short Date，只更新数据不动格式
+- **格式约束：** 24 列结构、Century Gothic 10pt、Short Date
+
+### 5.2.1 pd_table_config.json 配置（2026-05-04 新增）
+
+`Monthly PD Report/pd_table_config.json` 是 PD Table + HTML build 的统一配置入口。Summer 直接编辑这个文件就能调整以下行为，**不用改代码**：
+
+| 字段 | 用途 |
+|------|------|
+| `after_sales_improvement` | ASI 项目 SKU 列表。Page 1 卡片不显示，Page 2/3 计 NPD/ASI 标签。Total Projects stat **包含** ASI 非 MP（Summer 2026-05-04 确认）。 |
+| `umbrella_to_variants` | umbrella SKU → 变体列表，HTML Page 1 用变体替代 umbrella 渲染卡片。 |
+| `manual_additions` | 注入 PD Table 的额外行。当 PM 还没把项目放进 PD updates 但 Summer 已经有 business info 时用这个。每条 entry 含 SKU 列表 + PM + 字段映射。 |
+
+**当前配置（2026-05-04）：**
+- 4 个 ASI：RJ38-10-RDO-V2, RJ54-G-SS, RJ54-G-SS-D-BLK, RJ54-SS-15-D-UK-EU
+- 3 个 umbrella 映射：RJ50-SFDAF-25D / RJ64-10-new colors / RJ15-7-LL-D Color Variations
+- 1 个 manual_additions 组：RJ15-7-LL-DR/DG/DW（Rowling 慢炖锅 3 色，business info 共享）
 
 ### 5.3 Project List 更新（被动，Summer push 文件触发）
 
@@ -170,15 +196,24 @@ YEAR = '2026'
 > 当前 HTML 形态记录如下，但 Summer 仍有不少改造想法。**本次更新只稳数据源，HTML 改造单独再聊**，详见 Todo_List。
 
 **三页结构：**
-- **Page 1: PD Table（Sales 选品目录）** — 卡片布局，按 Category 分组，点击展开详情弹窗。详情含 Description / Features / Key Dates / Commercial Details / Notes。Filter: **For Sales (active) / All toggle**（默认 ON，过滤 Project List 白名单）、Category dropdown、PO toggle、Search box
-- **Page 2: Pipeline Timeline** — 横向 12 阶段（Kick off → Inspection），每阶段显示项目数 + 点击下钻。**默认进 tab 自动激活 Kick off**，active stage 有 inset shadow + scale(.94) "按下" 视觉。详情表含 SKU / Category / PM / Risk / **PO** / Next Action 列
-- **Page 3: Weekly Tracker** — 项目进度详情，Filter: PM / Category / Risk / Location / **PO (Placed/No PO)** / **For (buyer dropdown)** / Search
+- **Page 1: PD Table（Sales 选品目录）** — 卡片布局，按 Category 分组，点击展开详情弹窗。**ASI 和 MP 项目不显示卡片**（2026-05-04 改）。Filter: **For Sales (active) / All toggle**（默认 ON）、Category dropdown、PO toggle、Search box
+- **Page 2: Pipeline Timeline** — 横向 **11 阶段**（Kick off → MP，2026-05-04 把 Inspection 合并进 MP）。每阶段显示项目数 + 点击下钻。**默认进 tab 自动激活 Kick off**。详情表含 SKU / Category / PM / Risk / **PO** / Next Action 列。**MP 项目仍在 Pipeline 上显示**。
+- **Page 3: Weekly Tracker** — 项目进度详情，Filter: PM / Category / Risk / Location / **PO (Placed/No PO)** / **For (buyer dropdown)** / Search。**MP 项目仍在 Tracker 详情列表里**。
 
-**顶栏 Stats Bar（4-21 胡总确认）：**
-- 5 个浮动可点击卡片：Total Projects / High Risk / Medium Risk / Tier 1 (CSM) / In MP
-- 视觉：白色圆角卡片 + 顶部色条（Total/T1=深蓝渐变, High=红, Mid=橙, MP=绿），数字统一深蓝
-- 交互：Total → 跳 Pipeline；High/Mid Risk → 展开详情面板（表格：SKU/PM/Status/Issues/NextAction/CRD/Location），**点同一 stat card 收起 / 点别处也收起**；T1/MP → 筛选 Page 1 卡片
-- **数字规则（4-29 改）：** stats 必须等于 page1 "All" toggle 下能展开的卡片数。计算公式：从 page1Data 里筛 `category != ''` 的项算 risk/status/tier 各项分布。**不再用 Tracker 全量**——这样保证 stats 和点击后看到的卡片数严格一致，避免 Sales 看到数字与卡片对不上的困惑。
+**顶栏 Stats Bar（2026-05-04 大改）：**
+- 5 个浮动可点击卡片：**Total Projects / High Risk / Medium Risk / Tier 1 (CSM) / Project Released**（旧版 In MP 改名）
+- 视觉：白色圆角卡片 + 顶部色条（Total/T1=深蓝渐变, High=红, Mid=橙, Released=绿），数字统一深蓝
+- **新计数规则（Shine + Summer 2026-05-04 确认）：**
+  - `Total Projects` = NPD + ASI - MP（**不再等于 page1 卡片数**）
+  - `High Risk / Medium Risk` = page1 cards 上的 risk 计数（NPD 非 MP）
+  - `Tier 1 (CSM)` = Tracker 全部 T1 项目（**包含 MP T1**，唯一例外）
+  - `Project Released` = Tracker Current Status="MP" **或** "Inspection" 的全部 SKU 数（Pipeline 把 Inspection 合并进了 MP 阶段，所以 Project Released 也包含两种状态——保持 stat 数 = Pipeline MP 列 = Released 下拉行数）
+- 交互：
+  - Total → 跳 Pipeline tab
+  - High / Mid → 展开 Risk Detail Panel（SKU/PM/Status/Issues/NextAction/CRD/Location 列）
+  - **Project Released** → 展开 Released Detail Panel（**SKU / PM / Category / PO Status / Buyer / CRD** 列；**不展示卡片，只看清单**——MP 不需要业务字段）
+  - T1 → 筛选 Page 1 卡片
+  - 同一 stat card 再点收起、点别处也收起
 
 **视觉与交互偏好：**
 - 顶栏卡片要浮动质感（圆角阴影），不要平铺表格
@@ -192,16 +227,18 @@ YEAR = '2026'
 - 日期：具体日期 Short Date（不带时间），模糊日期如 "2026 April" 保持文字原样
 - Summer's Monthly PD Table 与 Weekly Tracker 保持相同 PM 分组和 SKU 顺序
 
-**Page1 可见性规则（4-29 确定）：**
-- **PD Table 是 page1 卡片的权威数据源。** PD Table 没填 tier 或 category 的 SKU **不会**出现在卡片里。
-- 这规则是 intentional 的：US-side tracking-only 项目（如 C55-11/C60/C45/C15）China PM 只在 Tracker 跟进度，不维护商业字段，自然不会被 Sales 看到。
-- 后果：stats（也只数有 category 的）会比 Tracker 全量小。例如 Tracker 70 个，page1 67 个；Tracker T1=7，page1 T1=3。差额对应 US-side 项目，是预期行为不是 bug。
+**Page1 可见性规则（2026-05-04 改）：**
+- **PD Table 是 page1 卡片的主数据源**，但额外两个过滤：
+  - **ASI 列表**（来自 `pd_table_config.json`）→ 不显示卡片（仅 Page 2/3 显示）
+  - **MP 状态**（来自 Tracker `Current Status == 'MP'`）→ 不显示卡片（计入 Project Released stat）
+- PD Table 没填 tier/category 的 SKU 也不出卡片（沿用旧规则）
 
-**Banner 规则（4-29 确定）：**
-- 触发：某 PM 累计 ≥3 个 pending SKU（PD Table 待确认/Gap section）→ banner 显示该 PM 负责的 category 列表（英文）
+**Banner 规则（2026-05-04 改）：**
+- 触发：某 PM 在 Tracker 上有 SKU 但 PD Table 没有（且不是 ASI、不是 MP）≥ 3 个 → banner 显示该 PM 负责的 category 列表（英文）
+- 数据源变了（旧：PD Table 待确认/Gap section；新：Tracker vs PD Table diff）；其他规则不变
 - 文案模板：`X categor(y/ies) currently lack complete commercial data — pending updates from related PM.`
-- 不点名 PM 个人（避免针对感）；自动从 build.py 内的 `PM_SECTION_TO_CATEGORIES` 字典查映射
-- 阈值 ≥3 是为了避免单个 SKU 缺数据触发 category-级 warning（数据正常波动）
+- 不点名 PM 个人，自动从 `PM_SECTION_TO_CATEGORIES` 字典查映射
+- 阈值 ≥3 是为了避免单个 SKU 缺数据触发 category-级 warning
 
 **双语输出（4-29 加）：**
 - 每次跑 build 同时产出 CN（给 Shine + 国内）和 EN（给 US Sales）两份 HTML
@@ -264,32 +301,51 @@ SPLIT_UMBRELLA_SKUS = {
 
 ---
 
-## 8. 构建系统（4-29 重构）
+## 8. 构建系统（4-29 重构 + 5-04 大改）
 
 **核心文件（`Monthly PD Report/`）：**
-- `template.html` — 完整单文件 HTML 模板，包含 CSS / DOM 结构 / 所有渲染 JS。数据位置用 5 个占位符：
-  - `{{PAGE1_DATA}}`、`{{PIPELINE_DATA}}`、`{{PAGE3_DATA}}`、`{{SUMMARY_STATS}}`、`{{BANNER_BLOCK}}`
-- `build.py` — 主构建脚本。读三个 xlsx + 抽 PD updates 图 → SKU 精确 join → 渲染 4 份 JSON + banner HTML → 灌进模板 → 输出
-- `translations.json` — CN→EN 翻译字典（约 140 条）
+- `template.html` — 完整单文件 HTML 模板。数据位置用 6 个占位符（5-04 加了 `{{RELEASED_DATA}}`）：
+  - `{{PAGE1_DATA}}`、`{{PIPELINE_DATA}}`、`{{PAGE3_DATA}}`、`{{SUMMARY_STATS}}`、`{{RELEASED_DATA}}`、`{{BANNER_BLOCK}}`
+- `build.py` — HTML 构建脚本。读三个 xlsx + 抽 PD updates 图 → 应用 ASI/MP 过滤 → 渲染 5 份 JSON + banner HTML → 灌进模板 → 输出
+- `rebuild_pdtable.py` — **新（5-04）** PD Table 重建脚本（详见 §5.2）。一键完成 transpose + manual_additions + 自动 Tracker 比对。
+- `pd_table_config.json` — **新（5-04）** ASI / umbrella / manual_additions 配置（详见 §5.2.1）。**两个脚本都读这个文件**。
+- `translations.json` — CN→EN 翻译字典（约 220 条）
 
-**路径处理（4-30 改）：** `BASE = Path(__file__).resolve().parent.parent` 自动从脚本位置推导工作目录，不再硬编码 session id。`SCRATCH = Path(os.environ.get('CLAUDE_SCRATCH', '/tmp/pd_report_scratch'))`，由 Cowork 注入，跨 session 自动跟随。`PDUPDATES_PATH` 用 glob 找最新 `China PD updates *.xlsx`。
+**路径处理：**
+- `BASE = Path(__file__).resolve().parent.parent` 自动从脚本位置推导
+- `SCRATCH = Path(os.environ.get('CLAUDE_SCRATCH', '/tmp/pd_report_scratch'))`
+- `TRACKER_PATH` 和 `PDUPDATES_PATH`：glob 找项目目录，OneDrive Files On-Demand bug 时自动 fallback 到 `/sessions/.../mnt/uploads/`（5-04 新增）
 
 **数据流：**
 ```
-3 xlsx 数据源 + China PD updates xlsx (图片源)
-    ↓ load_tracker / load_pd_table / load_project_list / extract_sku_images
-内存中的 dict / list + images dict {sku → base64 data URI}
-    ↓ build_page1_data (umbrella SKU 拆卡 + 图片 join) / build_page3_data / build_pipeline_data
-4 份 JSON
-    ↓ build_summary_stats（从 page1 visible 算）
-summaryStats
-    ↓ build_banner_html（PM 阈值检测）
-banner HTML
-    ↓ render_template（占位符替换）
-最终 HTML
-    ↓ write_with_rotation（current → _prev → 写新版）
-两份输出文件（CN + EN）
+[Phase A] PD Table 重建（rebuild_pdtable.py，每月 PD updates 来时手动跑）
+    pd_table_config.json + China PD updates xlsx
+        ↓ load_pdupdates / apply_manual_additions
+    新 Summers_Monthly_PD_Table.xlsx (覆盖旧版)
+        ↓ compare_pd_vs_tracker (vs Weekly Tracker, 过滤 ASI / MP / umbrella)
+    A/B/C 三段 diff（PM 邮件用）
+
+[Phase B] HTML 构建（build.py）
+    Tracker xlsx + PD Table xlsx + Project List + PD updates(图源) + config
+        ↓ load_tracker / load_pd_table / load_project_list / extract_sku_images
+    内存 dict + images
+        ↓ compute_mp_set (Tracker Current Status='MP') + asi_set (config)
+        ↓ build_page1_data (排除 ASI 和 MP) / build_page3_data / build_pipeline_data
+    JSON × 4
+        ↓ build_summary_stats(page1, tracker, asi_set, mp_set)
+    summaryStats {total, high, mid, t1, released}
+        ↓ build_released_data (MP SKU 列表，给 Project Released 下拉用)
+    releasedData
+        ↓ build_banner_html (Tracker - PD Table - ASI - MP, 按 PM 分组阈值 ≥3)
+    banner HTML
+        ↓ render_template（6 个占位符替换）
+    最终 HTML
+        ↓ write_with_rotation
+    CN + EN 两份输出
 ```
+
+**Pipeline 11 阶段（5-04 改，Inspection 合并进 MP）：**
+Kick off → Detail Design → Prototype → Tooling → FOT → EB → Culinary EB → Culinary Claims → PP → Culinary PP → MP
 
 **图片抽取关键函数（`extract_sku_images`）：**
 - 遍历 PD updates 每个 sheet 的 `ws._images`
@@ -324,12 +380,26 @@ banner HTML
 
 ---
 
-## 9. 当前数据源状态（2026-04-30）
+## 9. 当前数据源状态（2026-05-04 刷新）
 
-- **Weekly Tracker WK17** — 74 行 SKU。Summer 持续维护。PO 列已完整填写。
-- **Summers Monthly PD Table** — 82 个主表 SKU + 12 个 pending（待确认 / Gap）。其中 Liz 的 Kettle/Microwave section 有 10 个 pending（驱动 banner 触发）。
-- **Project list.xlsx → China Projects sheet** — 41 个白名单 SKU（C4 列 Model）。命名是 `Project list.xlsx`（无日期后缀）。
-- **China PD updates Apr 2026** — Shine 4-29 给的版本，已经走完一遍 §5.2 SOP，更新合并到 PD Table。**4-30 起也作为图片源**（46 张内嵌产品渲染图，build.py 自动抽出来）。
+- **Weekly Tracker WK17** — 74 行 SKU，含 17 个 MP 状态（Project Released）。
+- **Summers Monthly PD Table** — 51 行 SKU（5-04 纯镜像重建后）。包含 RJ15-7-LL-DR/DG/DW 三色（manual_additions 注入）。
+- **Project list.xlsx → China Projects sheet** — 41 个白名单 SKU。
+- **China PD updates Apr 2026** — Shine 4-29 给的最新版（Rice Cooker sheet 已删，Liz 的 RJ34 M 系列归 Rowling 处理）。
+- **pd_table_config.json** — 4 个 ASI、3 个 umbrella 映射、1 个 manual_additions 组（RJ15-7-LL 三色）。
+
+**HTML 输出（5-04 这次）：**
+- Page 1：46 张可见卡片（PD Table 51 - 5 个 MP）
+- Stats Bar：Total=46, High=4, Mid=10, T1=7, **Project Released=17**
+- Banner: ON（多个 PM 数据缺口触发）
+
+**今天工作的总结（2026-05-04）：**
+- 邮件给 5 位 PM + Shine：要求本周对齐 Tracker 和 PD Table（含 A/B 两类 SKU 列表）
+- §5.2 SOP 完全重写：纯镜像重建，不再 merge 旧版
+- 新建 `pd_table_config.json` 统一配置 ASI / umbrella / manual_additions
+- 新建 `rebuild_pdtable.py` 一键脚本，含 Tracker 自动比对
+- HTML：Stat Bar 重做（"In MP" → "Project Released"，独立下拉）；Pipeline 合并 Inspection 进 MP；Banner 触发逻辑切换到 Tracker vs PD Table diff
+- 旧 PD Table（4-29 版本）存档到 `Archive/`
 
 **HTML 输出：**
 - `China_PD_Monthly_Report_Apr2026.html` — 中文版，Page 3 issue/action 保留中文
