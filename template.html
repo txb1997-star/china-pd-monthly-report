@@ -192,7 +192,7 @@ tr.terminated td{text-decoration:line-through}
 </div>
 <div class="tab-content active" id="tab-pd-table">
   <div class="p1-filters">
-    <div class="filter-group"><label>View</label><div class="toggle-group" id="f1-pl-toggle"><button class="toggle-btn active" data-val="ON">For Sales (active)</button><button class="toggle-btn" data-val="OFF">All</button></div></div>
+    <div class="filter-group"><label>View</label><div class="toggle-group" id="f1-pl-toggle"><button class="toggle-btn" data-val="ON">For Sales (active)</button><button class="toggle-btn active" data-val="OFF">All</button></div></div>
     <div class="filter-group"><label>Category</label><select id="f1-cat" onchange="filterPage1()"><option value="">All Categories</option></select></div>
     <div class="filter-group"><label>PO</label><div class="toggle-group" id="f1-po-toggle"><button class="toggle-btn active" data-val="">All</button><button class="toggle-btn" data-val="YES">PO Placed</button><button class="toggle-btn" data-val="NO">No PO</button></div></div>
     <div class="filter-group"><label>Search</label><input type="text" id="f1-search" placeholder="SKU, description, feature..." oninput="filterPage1()"></div>
@@ -240,7 +240,7 @@ tr.terminated td{text-decoration:line-through}
   </div>
   <div class="table-wrapper">
     <table class="data-table" id="page3Table">
-      <thead><tr><th>#</th><th>SKU</th><th>Category</th><th>Risk</th><th>PM</th><th>Tier</th><th>Current Status</th><th>Issues / Risks</th><th>Next Action</th><th>CRD</th><th>Location</th><th>PO</th><th>Last Updated</th></tr></thead>
+      <thead><tr><th>#</th><th>SKU</th><th>Category</th><th>Risk</th><th>PM</th><th>Tier</th><th>Current Status</th><th>Issues / Risks</th><th>Next Action</th><th>CRD</th><th>Location</th><th>PA</th><th>PO</th><th>Last Updated</th></tr></thead>
       <tbody id="page3Body"></tbody>
     </table>
   </div>
@@ -284,7 +284,7 @@ function renderStats(){
   b.innerHTML='<div class="home-btn" onclick="goHome()" title="Home"><span>HOME</span></div>'+'<div class="stat-card sc-total" onclick="statClick(\'total\')"><div class="stat-num">'+summaryStats.total+'</div><div class="stat-label">Total Projects</div></div>'+'<div class="stat-card sc-high" onclick="statClick(\'high\')"><div class="stat-num">'+summaryStats.high+'</div><div class="stat-label">High Risk</div></div>'+'<div class="stat-card sc-mid" onclick="statClick(\'mid\')"><div class="stat-num">'+summaryStats.mid+'</div><div class="stat-label">Medium Risk</div></div>'+'<div class="stat-card sc-t1" onclick="statClick(\'t1\')"><div class="stat-num">'+summaryStats.t1+'</div><div class="stat-label">Tier 1 (CSM)</div></div>'+'<div class="stat-card sc-released" onclick="statClick(\'released\')"><div class="stat-num sc-released-num">'+summaryStats.released+'</div><div class="stat-label">Project Released</div></div>';
 }
 
-function goHome(){closeRiskPanel();switchTab('pd-table');document.getElementById('f1-cat').value='';document.getElementById('f1-search').value='';document.querySelectorAll('#f1-po-toggle .toggle-btn').forEach(function(b){b.classList.toggle('active',b.getAttribute('data-val')==='')});document.querySelectorAll('#f1-pl-toggle .toggle-btn').forEach(function(b){b.classList.toggle('active',b.getAttribute('data-val')==='ON')});currentPLFilter='ON';filterPage1()}
+function goHome(){closeRiskPanel();switchTab('pd-table');document.getElementById('f1-cat').value='';document.getElementById('f1-search').value='';document.querySelectorAll('#f1-po-toggle .toggle-btn').forEach(function(b){b.classList.toggle('active',b.getAttribute('data-val')==='')});document.querySelectorAll('#f1-pl-toggle .toggle-btn').forEach(function(b){b.classList.toggle('active',b.getAttribute('data-val')==='OFF')});currentPLFilter='OFF';filterPage1()}
 
 // Stat card click handlers
 function switchTab(tabId){
@@ -369,7 +369,7 @@ document.querySelectorAll('.tab-btn').forEach(function(btn){
 });
 
 // ===== PAGE 1: CARDS =====
-var currentPOFilter='';var currentPLFilter='ON';
+var currentPOFilter='';var currentPLFilter='OFF';
 function initPage1(){
   var cats=[],seen={};
   page1Data.forEach(function(p){if(p.category&&!seen[p.category]){cats.push(p.category);seen[p.category]=true}});
@@ -609,11 +609,11 @@ function filterPage3(){
     if(currentP3ASIFilter==='ASI'&&!p.isASI)return;
     if(pmF&&p.pm!==pmF)return;if(locF&&p.location!==locF)return;if(poF&&p.poStatus!==poF)return;if(buyerF&&p.poBuyer!==buyerF)return;
     if(searchF&&JSON.stringify(p).toLowerCase().indexOf(searchF)===-1)return;
-    if(p.pmSection&&p.pmSection!==lastPM){lastPM=p.pmSection;html+='<tr class="section-header"><td colspan="13">'+esc(pmEnglish[p.pmSection]||p.pmSection)+'</td></tr>'}
+    if(p.pmSection&&p.pmSection!==lastPM){lastPM=p.pmSection;html+='<tr class="section-header"><td colspan="14">'+esc(pmEnglish[p.pmSection]||p.pmSection)+'</td></tr>'}
     var isT=(p.currentStatus==='—'||p.currentStatus==='-')&&p.issue&&p.issue.indexOf('终止')!==-1;
     var rc=isT?'terminated':(p.tier==='1'?'t1-row':'');
     var asiTag=p.isASI?' <span class="risk-badge risk-none" style="font-size:9px">ASI</span>':'';
-    html+='<tr class="'+rc+'"><td>'+esc(p.num)+'</td><td><strong>'+esc(p.sku)+'</strong>'+asiTag+'</td><td>'+esc(p.category)+'</td><td>'+riskBadge(p.risk)+'</td><td>'+esc(p.pm)+'</td><td>'+tierBadge(p.tier)+'</td><td>'+esc(p.currentStatus)+'</td><td style="max-width:220px;font-size:11.5px">'+esc(p.issue)+'</td><td style="max-width:220px;font-size:11.5px">'+esc(p.nextAction)+'</td><td>'+cleanDate(p.crd)+'</td><td>'+locBadge(p.location)+'</td><td>'+poBadge(p)+'</td><td style="font-size:11px;color:#999">'+cleanDate(p.lastUpdate)+'</td></tr>';
+    html+='<tr class="'+rc+'"><td>'+esc(p.num)+'</td><td><strong>'+esc(p.sku)+'</strong>'+asiTag+'</td><td>'+esc(p.category)+'</td><td>'+riskBadge(p.risk)+'</td><td>'+esc(p.pm)+'</td><td>'+tierBadge(p.tier)+'</td><td>'+esc(p.currentStatus)+'</td><td style="max-width:220px;font-size:11.5px">'+esc(p.issue)+'</td><td style="max-width:220px;font-size:11.5px">'+esc(p.nextAction)+'</td><td>'+cleanDate(p.crd)+'</td><td>'+locBadge(p.location)+'</td><td style="font-size:11px">'+esc(p.paStatus||'')+'</td><td>'+poBadge(p)+'</td><td style="font-size:11px;color:#999">'+cleanDate(p.lastUpdate)+'</td></tr>';
   });
   body.innerHTML=html;
 }

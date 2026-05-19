@@ -1,8 +1,8 @@
 # Monthly PD Report Project
 
-*最后更新：2026-05-04*
+*最后更新：2026-05-19*
 *负责人：Summer Tan (PMO)*
-*状态：HTML 已上线（4-21 胡总确认），构建系统重构完成（template + build.py + translations.json），中英双版自动产出。5-04 大改：纯镜像 PD Table 重建 + Stats Bar 重做 + Pipeline US/MX 拆分 + ASI/NPD filter + Placeholder 占位卡片 + Category 合并 + "Other" 收纳。*
+*状态：HTML 已上线（4-21 胡总确认），构建系统重构完成（template + build.py + translations.json），中英双版自动产出。5-04 大改：纯镜像 PD Table 重建 + Stats Bar 重做 + Pipeline US/MX 拆分 + ASI/NPD filter + Placeholder 占位卡片 + Category 合并 + "Other" 收纳。5-07 大改：Tracker 25 列适配（5/6 P/V 列加进来）+ umbrella 拆卡机制彻底删除（PD updates 端 PM 拆开 + rebuild 端自动按 cell 拆行）+ MONTH_NAME 切到 May。**5-19 大改：Tracker 26 列适配（5/19 加 col E "NPD/ASI"）+ ASI 来源从 config 切到 Tracker col E（pd_table_config.json `after_sales_improvement` 字段删除）+ build.py 新增 Excel 365 "image-in-cell" 解析支持（与传统 image-over-cell 并存）+ zero-area 幽灵图过滤（修 RJ44-CB 配错图 bug）。***
 
 ---
 
@@ -127,20 +127,38 @@ HTML 通过 SKU join 三份数据源生成。**SKU = 唯一的 join key。**
 - **数据精度优先级：** Weekly Tracker > PD Table > Draft
 - **格式约束：** 24 列结构、Century Gothic 10pt、Short Date
 
-### 5.2.1 pd_table_config.json 配置（2026-05-04 新增）
+### 5.2.1 pd_table_config.json 配置（2026-05-04 新增，5-07 + 5-19 简化）
 
 `Monthly PD Report/pd_table_config.json` 是 PD Table + HTML build 的统一配置入口。Summer 直接编辑这个文件就能调整以下行为，**不用改代码**：
 
 | 字段 | 用途 |
 |------|------|
-| `after_sales_improvement` | ASI 项目 SKU 列表。Page 1 卡片不显示，Page 2/3 计 NPD/ASI 标签。Total Projects stat **包含** ASI 非 MP（Summer 2026-05-04 确认）。 |
-| `umbrella_to_variants` | umbrella SKU → 变体列表，HTML Page 1 用变体替代 umbrella 渲染卡片。 |
+| `sku_aliases` | Tracker SKU → PD Table canonical 名映射，用于 rebuild gap analysis + build.py tracker-row matching。如 `RJ38-G4-AS → RJ38-G4-LS`（Cottee typo）、`RJ38-9TW-V3 → RJ38-9TW-V2`、`RJ56-DIS-V2-CA-CO → RJ56-DIS-V2`。 |
+| `mp_overrides` | PD Table SKU 强制当 MP（Released）。用于 PM 在 PD updates 把多色拆开但 Tracker 只有一行 MP 时。如 `RJ64-10-V2-{PTC,BTR,AQU,LVD}`。 |
 | `manual_additions` | 注入 PD Table 的额外行。当 PM 还没把项目放进 PD updates 但 Summer 已经有 business info 时用这个。每条 entry 含 SKU 列表 + PM + 字段映射。 |
 
-**当前配置（2026-05-04）：**
-- 4 个 ASI：RJ38-10-RDO-V2, RJ54-G-SS, RJ54-G-SS-D-BLK, RJ54-SS-15-D-UK-EU
-- 3 个 umbrella 映射：RJ50-SFDAF-25D / RJ64-10-new colors / RJ15-7-LL-D Color Variations
-- 1 个 manual_additions 组：RJ15-7-LL-DR/DG/DW（Rowling 慢炖锅 3 色，business info 共享）
+**已删字段：**
+- `umbrella_to_variants`（5-07 删）：死代码（build.py 用自己硬编码的 SPLIT_UMBRELLA_SKUS，根本没读这个 config 字段）。新机制：PD updates 端 PM 把多色拆成独立列（每列一 SKU + 独立图），rebuild 自动每 cell 一行。共享一张图的多 SKU（如 RJ50 SS/BLK）仍可写一个 cell，rebuild `parse_sku_cell()` 按换行/制表符拆行，商业字段填重复。
+- `after_sales_improvement`（5-19 删）：ASI 来源切到 Tracker col E "NPD/ASI"，PM/Summer 在 Tracker 维护，不再在 config 里写死。详见 §5.2.2。
+
+**当前配置（2026-05-19）：**
+- 3 个 sku_aliases
+- 4 个 mp_overrides（RJ64-10-V2 四色 PTC/BTR/AQU/LVD）
+- 0 个 manual_additions
+
+### 5.2.2 ASI 数据源切到 Tracker col E（2026-05-19 新增）
+
+**触发：** 5/19 WK21 Tracker 加了 NPD/ASI 列（col E），PM 可以直接在 Tracker 标 ASI。
+
+**新规则：**
+- **Tracker col E 是 ASI 的 single source of truth**：空白 = NPD（默认），写 `ASI` 就是 After Sales Improvement
+- build.py `load_tracker` 读 col E 进 `npd_asi` 字段；main() 计算 `asi_set = {r['sku'] for r in tracker_rows if r['npd_asi'].upper() == 'ASI'}`
+- rebuild_pdtable.py `load_tracker_skus` 把 npd_asi 放进 tuple 位置 3；`compare_pd_vs_tracker` 用 `asi = {sku for sku, info in tracker_skus.items() if info[3] == 'ASI'}`
+- 删了 `pd_table_config.json` 的 `after_sales_improvement` 字段
+
+**5-19 WK21 ASI 集（7 个）：** RJ38-10-RDO-V3, RJ54-G-SS, RJ54-G-SS-D-BLK, RJ54-SS-15-D-UK-EU, RJ62-20A-Series, RJ64-10-V2-WHT, RJ64-10-new colors
+
+**改 ASI 的操作：** 改 Tracker col E（不是 config 了）→ 跑 build。
 
 ### 5.3 Project List 更新（被动，Summer push 文件触发）
 
@@ -185,9 +203,13 @@ YEAR = '2026'
 ```
 注意 `MONTH_NAME` 用英文三字母简写（Jan/Feb/Mar/Apr/May/Jun/Jul/Aug/Sep/Oct/Nov/Dec），跟 HTML 文件名约定一致。
 
-### 5.7 新 umbrella SKU 检测
+### 5.7 PD updates 多 SKU cell 处理（5-07 改）
 
-如果 PM 在 PD updates 里又搞出新的合并写法（一列多 SKU），build.py 不会自动拆——Claude 跑完后会注意到这种新模式，**先问 Summer** 才能加进 `SPLIT_UMBRELLA_SKUS`。详见 memory `feedback_umbrella_sku_split`。
+5-07 起 umbrella 字典彻底删掉。PM 在 PD updates 里如果一列写多 SKU（换行分隔，如 RJ50-SFDAF-25D(SS) / RJ50-BFDAF-25D(BLK) 共享一张图）：rebuild_pdtable.py 的 `parse_sku_cell()` 自动按换行/制表符拆成 N 行 PD Table，每行独立 SKU + 共享商业字段（cost / port / duty 等填重复）。Page 1 直接 1 PD Table 行 = 1 卡片。
+
+PM 也可以选择把多色拆成独立列（每列一 SKU + 独立图，5 月 PD updates 已经这样写了 RJ64-10 4 色 + RJ15-7-LL 3 色）——也 OK，rebuild 行为一致。
+
+不再需要任何字典或人工映射。
 
 ---
 
@@ -249,9 +271,9 @@ PD Table / Tracker 里 PM 写的 category 字段五花八门（"Microwave Oven" 
 - 日期：具体日期 Short Date（不带时间），模糊日期如 "2026 April" 保持文字原样
 - Summer's Monthly PD Table 与 Weekly Tracker 保持相同 PM 分组和 SKU 顺序
 
-**Page1 可见性规则（2026-05-04 改）：**
+**Page1 可见性规则（2026-05-04 改，5-19 ASI 数据源变更）：**
 - **PD Table 是 page1 卡片的主数据源**，但额外两个过滤：
-  - **ASI 列表**（来自 `pd_table_config.json`）→ 不显示卡片（仅 Page 2/3 显示）
+  - **ASI 列表**（5-19 起来自 **Tracker col E "NPD/ASI"**；旧 `pd_table_config.json` `after_sales_improvement` 字段已删）→ 不显示卡片（仅 Page 2/3 显示）
   - **MP 状态**（来自 Tracker `Current Status == 'MP'`）→ 不显示卡片（计入 Project Released stat）
 - PD Table 没填 tier/category 的 SKU 也不出卡片（沿用旧规则）
 
@@ -281,47 +303,54 @@ PD Table / Tracker 里 PM 写的 category 字段五花八门（"Microwave Oven" 
 
 ---
 
-## 7. 产品渲染图（2026-04-30 上线）
+## 7. 产品渲染图（2026-04-30 上线，5-19 加 image-in-cell 支持）
 
-**结论：** PM 在 `China PD updates {Mon} {Year}.xlsx` 里内嵌的产品渲染图可以**自动抽出来嵌进 HTML**，不需要单独 folder 维护。
+**结论：** PM 在 `China PD updates {Mon} {Year}.xlsx` 里内嵌的产品渲染图可以**自动抽出来嵌进 HTML**，不需要单独 folder 维护。**PM 用 Excel 的"浮于单元格上"（image-over-cell）或新版"嵌入单元格"（image-in-cell）任何一种插入方式都支持**。
 
 **机制：**
+
+**Image-over-cell（传统）：**
 - xlsx 本质是 zip 包，图片放在 `xl/media/` 里。openpyxl 通过 `ws._images` 拿到每张图的锚点（`anchor._from.col / row / colOff / rowOff`）。
 - 对每张图：anchor `_from.col + 1` 找它落在哪一列，去 Row 10 取那一列的 Model（SKU）当 key。
-- 图片用 PIL 缩到 **300×300px + JPEG q78**，base64 内嵌到 HTML 里。一张图 ~8-15KB，46 张总共让 HTML 从 154KB 涨到 ~600KB（仍然单文件邮件可发）。
+
+**Image-in-cell（Excel 365 新功能，5-19 加）：**
+- openpyxl `ws._images` **看不见这种图**，它走 Excel 的 rich-data 链路存储。
+- build.py `_extract_image_in_cell_raw()` 自己解 xlsx zip：
+  ```
+  cell.vm (1-based) → metadata.xml/valueMetadata[vm-1].rc.@v
+                    → rdrichvalue.xml/rv[v].<v>0</v> = LocalImageIdentifier L
+                    → richValueRel.xml/rel[L].@r:id = rIdN
+                    → _rels/richValueRel.xml.rels[rIdN] → media/image*.png
+  ```
+- 每个图都按 col 匹配 Row 10 SKU（跟 image-over-cell 同一套 col → SKU 映射）。
+- 5-19 May PD updates 抽到 image-in-cell 15 张（Kettle 7 + Microwaves 1 + Grill&Hand Mixer 7 — Chris 那个新 sheet 全是 image-in-cell）。
+
+**Zero-area 幽灵图过滤（5-19 加）：**
+- 现象：PM 拖图错位 / 撤销 / 替换时，Excel 偶尔把图二进制留在 zip 里但把 anchor 矩形压缩到 0 宽 0 高（视觉上看不见）。
+- bug 表现：RJ44-CB Coffee grinder 卡片显示成蓝色水桶——Coffee&Iceman col 5 有两张图，幽灵蓝水桶图在前抢占了真磨豆机图。
+- 修复：build.py 在 `for img in ws._images` 循环里加判断，TwoCellAnchor 的 `_from == to`（同 col + 同 colOff，或同 row + 同 rowOff）就 skip。
+
+**通用处理：**
+- 图片用 PIL 缩到 **300×300px + JPEG q78**，base64 内嵌到 HTML 里。一张图 ~8-15KB，~60 张总共让 HTML 从 154KB 涨到 ~780KB（仍然单文件邮件可发）。
 - 每月跑 `build.py` 时自动重新抽，不需要手动同步。
 
 **文件命名约定：**
 - 源文件：`Monthly PD Report/China PD updates {Mon} {Year}.xlsx`
 - build.py 用 `glob('China PD updates *.xlsx')` + 按 mtime 取最新，下月 Shine 发新文件直接拖进同目录即可，不用改路径
 
-**多 SKU / 多图同列处理（umbrella SKU 拆卡，2026-04-30 Summer 确认）：**
+**多 SKU / 多图同列处理（5-07 后简化，无 umbrella 字典）：**
 
-PM 在 PD updates 里偶尔会把多个变体放一列：
+PM 在 PD updates 里写多变体的两种方式都支持：
 
 | 类型 | 例子 | 处理 |
 |---|---|---|
-| 多 SKU 共享 1 张图 | `RJ50-SFDAF-25D(SS) / RJ50-BFDAF-25D(BLK)`（颜色变体共用一张图） | 所有 SKU 注册同一张图；HTML 里拆 2 张卡 |
-| 多 SKU 各有图（2×2 网格） | `RJ64-10-PTC / BTR / LVD / Aqu`（4 色冰淇淋，每色一张图） | 按 anchor (rowOff bucket → colOff) reading order 1:1 配对；HTML 里拆 4 张卡 |
+| 共享 1 张图，多 SKU 写一个 cell | `RJ50-SFDAF-25D(SS) / RJ50-BFDAF-25D(BLK)` | rebuild 按换行拆 PD Table 2 行（共享图 + 共享商业字段）；图片提取时所有 SKU 共享该图 |
+| 每色独立列 + 独立图 | RJ64-10 4 色（PTC/BTR/AQU/LVD 各占一列）/ RJ15-7-LL 3 色 / RJ38 系列 | 每列 PD Table 一行 + 各自独立图 |
 | 单 SKU 单图 | 普通情况 | 直接映射 |
 
-**Page 1 拆 / Page 2、3 合并的设计：**
-- Page 1（Sales 选品目录）：每个变体显示成独立卡片，复制 umbrella 行的所有商业字段（cost / MSRP / description / features / factory / port / duty / 备注…），用变体自己的图（找不到则 fallback umbrella 共享图）
-- Page 2（Pipeline）和 Page 3（Weekly Tracker）：保持 umbrella 一行不动，开发进度按 umbrella SKU 跟踪
+**5-07 起的简单规则：1 PD Table 行 = 1 Page 1 卡 = 1 张图（或 fallback 到 sibling 共享图）**。Page 2 / Page 3 也按 1 Tracker 行 = 1 项处理（含 P/V variant 子行）。
 
-**确认的 umbrella → variants 映射（写在 build.py 顶部 `SPLIT_UMBRELLA_SKUS` 字典）：**
-
-```python
-SPLIT_UMBRELLA_SKUS = {
-    'RJ50-SFDAF-25D':     ['RJ50-SFDAF-25D(SS)', 'RJ50-BFDAF-25D(BLK)'],
-    'RJ62-20A-Series':    ['RJ62-BLK', 'RJ62-WHT'],
-    'RJ64-10-new colors': ['RJ64-10-PTC', 'RJ64-10-BTR', 'RJ64-10-LVD', 'RJ64-10-Aqu'],
-}
-```
-
-新增映射**必须先问 Summer**，不要自动检测就拆。
-
-**括号尾标剥离 alias（image-only）：** PD updates 里 `RJ50-SFDAF-25D(SS)` 注册时同时注册 bare 版 `RJ50-SFDAF-25D` 作 alias，让 PD Table 的 parent SKU 命中变体的图。仅图片字典使用，业务字段（PD Table 合并 / Tracker join 等）仍然精确匹配。
+**括号尾标剥离 alias（image-only，仍保留）：** PD updates 里 `RJ50-SFDAF-25D(SS)` 注册时同时注册 bare 版 `RJ50-SFDAF-25D` 作 alias，让 Tracker 端 base SKU 也能命中图。仅图片字典使用，业务字段（PD Table 合并 / Tracker join 等）仍然精确匹配。
 
 **当前覆盖率（4-30 跑出来）：** 72 个可见 page1 卡片，37 张有图（51%）。剩下 35 张是 placeholder，原因：
 - Liz 在休假，水壶/微波炉系列没上传图（10+ 个）
@@ -361,7 +390,7 @@ SPLIT_UMBRELLA_SKUS = {
     Tracker xlsx + PD Table xlsx + Project List + PD updates(图源) + config
         ↓ load_tracker / load_pd_table / load_project_list / extract_sku_images
     内存 dict + images
-        ↓ compute_mp_set (Tracker Current Status='MP') + asi_set (config)
+        ↓ compute_mp_set (Tracker Current Status='MP') + asi_set (Tracker col E, 5-19)
         ↓ build_page1_data (排除 ASI 和 MP) / build_page3_data (带 isASI 标签) / build_pipeline_data × 2 (US/MX 按 -MX 后缀拆，各自带 isASI 标签)
     JSON × 5（page1 + pipelineUS + pipelineMX + page3 + released）
         ↓ build_summary_stats(page1, tracker, asi_set, mp_set)
@@ -424,39 +453,42 @@ Kick off → Detail Design → Prototype → Tooling → FOT → EB → Culinary
 
 ---
 
-## 9. 当前数据源状态（2026-05-04 刷新）
+## 9. 当前数据源状态（2026-05-19 刷新）
 
-- **Weekly Tracker WK17** — 74 行 SKU，含 17 个 MP 状态（Project Released）。
-- **Summers Monthly PD Table** — 51 行 SKU（5-04 纯镜像重建后）。包含 RJ15-7-LL-DR/DG/DW 三色（manual_additions 注入）。
+- **Weekly Tracker WK21** — 81 行 SKU，含 20 个 MP/Inspection 状态（Project Released）。**5/19 加了 NPD/ASI 列在 col E，整张表变 26 列**，原 风险/PM/Tier/... 等所有后续列右移一位（stage 列从 N-Y 变 P-Z）。
+- **Summers Monthly PD Table** — 62 行 SKU（5-19 纯镜像重建，无 manual_additions 注入）。
 - **Project list.xlsx → China Projects sheet** — 41 个白名单 SKU。
-- **China PD updates Apr 2026** — Shine 4-29 给的最新版（Rice Cooker sheet 已删，Liz 的 RJ34 M 系列归 Rowling 处理）。
-- **pd_table_config.json** — 4 个 ASI、3 个 umbrella 映射、1 个 manual_additions 组（RJ15-7-LL 三色）。
+- **China PD updates May 2026** — 9 个 sheet（5-19 PM 修订版，Chris 新加 "Grill&Hand Mixer&Blender&MX" sheet 7 个 SKU，Sourcing sheet 清空，C56-Nugget 保留改走非 Welly 工厂，RJ54-G-XX 新 SKU 但颜色待 PM 定）。
+- **pd_table_config.json** — 3 sku_aliases + 4 mp_overrides + 0 manual_additions（`after_sales_improvement` 字段 5-19 删除，ASI 改读 Tracker col E）。
 
-**HTML 输出（5-04 这次）：**
-- Page 1：46 张可见卡片（PD Table 51 - 5 个 MP）
-- Stats Bar：Total=46, High=4, Mid=10, T1=7, **Project Released=17**
-- Banner: ON（多个 PM 数据缺口触发）
+**HTML 输出（2026-05-19）：**
+- Page 1：72 张卡（61 真卡 + 11 placeholder；18 个并入 "Other"）
+- Stats Bar：Total=72, High=4, Mid=15, T1=6, **Project Released=20**
+- Banner: ON
+- **ASI 集（7 个 from Tracker col E）：** RJ38-10-RDO-V3, RJ54-G-SS, RJ54-G-SS-D-BLK, RJ54-SS-15-D-UK-EU, RJ62-20A-Series, RJ64-10-V2-WHT, RJ64-10-new colors
+- **图片覆盖：** 58 SKUs（image-over-cell + image-in-cell），9 张被 skip（含 2 张 5-19 新过滤的 zero-area 幽灵图）
 
-**今天工作的总结（2026-05-04）：**
-- 邮件给 5 位 PM + Shine：要求本周对齐 Tracker 和 PD Table（含 A/B 两类 SKU 列表）
-- §5.2 SOP 完全重写：纯镜像重建，不再 merge 旧版
-- 新建 `pd_table_config.json` 统一配置 ASI / umbrella / manual_additions
-- 新建 `rebuild_pdtable.py` 一键脚本，含 Tracker 自动比对
-- HTML：Stat Bar 重做（"In MP" → "Project Released"，独立下拉）；Pipeline 合并 Inspection 进 MP；Banner 触发逻辑切换到 Tracker vs PD Table diff
-- 旧 PD Table（4-29 版本）存档到 `Archive/`
+**今天工作的总结（2026-05-19）：**
+- **Tracker 26 列适配**：build.py `load_tracker` + rebuild_pdtable.py `load_tracker_skus` 都按 col E=NPD/ASI / 后续列右移一位 / stage=P-Z 重新读
+- **ASI 数据源切换**：从 `pd_table_config.json` `after_sales_improvement` list → Tracker col E。删了 config 字段
+- **build.py 加 `_extract_image_in_cell_raw()`**：支持 Excel 365 image-in-cell（rich-data 链路解析），与 image-over-cell 并存
+- **加 zero-area 幽灵图过滤**：修 RJ44-CB 卡片配错图 bug（Coffee&Iceman col 5 一张零宽幽灵蓝水桶图覆盖了真磨豆机图）
+- 用 WK21 + 新 PD updates 跑 rebuild + build，发邮件 Teams broadcast 给 5 PM（A 类 11 个、B 类 8 个），等本周回填
 
-**HTML 输出：**
-- `China_PD_Monthly_Report_Apr2026.html` — 中文版，Page 3 issue/action 保留中文
-- `China_PD_Monthly_Report_Apr2026_EN.html` — 英文版，所有数据字段翻译
+**HTML 输出（5-19）：**
+- `China_PD_Monthly_Report_May2026.html` — 中文版，Page 3 issue/action 保留中文
+- `China_PD_Monthly_Report_May2026_EN.html` — 英文版，所有数据字段翻译（5-19 有 119 条新中文待翻译，对话翻译流程未跑）
 - 都是 4-21 胡总确认的三页结构 + Stats Bar + Risk Panel
 - 4-29 新增功能：Project List filter toggle (For Sales / All)、Pipeline 默认 Kick off 激活、Pipeline / Tracker 加 PO 列、Tracker 加 PO/Buyer filter、Banner（PM 阈值触发）、双语自动产出
-- 4-30 新增功能：产品渲染图自动抽取嵌入卡片、umbrella SKU 拆卡（`SPLIT_UMBRELLA_SKUS`）、PD updates 文件自动找最新
+- 4-30 新增功能：产品渲染图自动抽取嵌入卡片、umbrella SKU 拆卡（`SPLIT_UMBRELLA_SKUS`，**5-07 已删**）、PD updates 文件自动找最新
+- 5-07 改造：Tracker 25 列适配（5/6 P/V 列加进来）+ umbrella 字典彻底删（PD updates 端拆 + rebuild 端按 cell 自动拆）+ manual_additions 清空 + MONTH_NAME → May 2026
+- 5-19 改造：Tracker 26 列适配（NPD/ASI col E）+ ASI 来源切到 Tracker col E + image-in-cell 支持 + zero-area 幽灵图过滤
 
-**Banner 当前触发：** Liz Liu — Kettle and Microwave categories（10 个 pending SKU）
+**Banner 当前触发（5-19）：** ON（PM 端有待补 business info 的 SKU）
 
-**Stats Bar 当前数字：** Total=72, High=4, Med=12, MP=15, T1=3（从 page1 visible 算，4-30 因为拆卡 +5）
+**Stats Bar 当前数字（5-19）：** Total=72, High=4, Mid=15, T1=6, Released=20
 
-**图片覆盖：** 72 个可见卡片中 37 个有真实渲染图（51%），其他 fallback 到 emoji 占位图标。详见 §7 末尾的覆盖率分析。
+**图片覆盖（5-19）：** 58 SKUs 有图（image-over-cell 43 + image-in-cell 15），9 张 skip（含 2 张 zero-area 幽灵图）。
 
 ---
 

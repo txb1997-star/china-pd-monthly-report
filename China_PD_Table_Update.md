@@ -1,8 +1,8 @@
 # China PD Table 更新流程
 
-*最后更新：2026-05-04（**纯镜像重建大改版**）*
+*最后更新：2026-05-19（ASI 数据源切到 Tracker col E）*
 *负责人：Summer Tan (PMO)*
-*关联文档：Monthly_PD_Project.md §5.2 / §5.2.1*
+*关联文档：Monthly_PD_Project.md §5.2 / §5.2.1 / §5.2.2*
 
 ---
 
@@ -262,7 +262,9 @@ PD Table SKUs ≡ Tracker SKUs，差异分三段：
   C) Tracker 已 MP（Project Released）：合规情况，PD Table 不需要这些 SKU
 ```
 
-**Umbrella 拆卡 / SKU rename 处理：** 通过 `pd_table_config.json` 的 `umbrella_to_variants` 和 `sku_aliases` 字段做归一化，diff 不会因为命名差异而误报。
+**ASI 数据源（5-19 改）：** ASI 集从 Tracker col E "NPD/ASI" 实时计算，不再读 config。`compare_pd_vs_tracker` 里 `asi = {sku for sku, info in tracker_skus.items() if info[3] == 'ASI'}`。
+
+**SKU rename / canonical 化处理：** 通过 `pd_table_config.json` 的 `sku_aliases` 字段做归一化，diff 不会因为命名差异而误报（如 `RJ38-G4-AS` → `RJ38-G4-LS`、`RJ38-9TW-V3` → `RJ38-9TW-V2`、`RJ56-DIS-V2-CA-CO` → `RJ56-DIS-V2`）。5-07 删了 `umbrella_to_variants` 字段（PD updates 端 PM 直接按列 / 按 cell 拆多色，rebuild 自动处理）。
 
 **Banner 触发：** 上面 A 段如果某 PM ≥ 3 个 SKU 缺失，HTML build 时 banner 自动显示该 PM 负责的 category 列表（详见 `Monthly_PD_Project.md` §6 Banner 规则）。
 

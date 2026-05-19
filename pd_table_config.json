@@ -1,39 +1,18 @@
 {
-  "_comment": "Summer's PD Table / HTML Build config. Edit this file to add/remove ASI projects, umbrella SKU mappings, or manual data injections. Reloaded by rebuild_pdtable.py and build.py each run.",
-
-  "after_sales_improvement": [
-    "RJ38-10-RDO-V2",
-    "RJ54-G-SS",
-    "RJ54-G-SS-D-BLK",
-    "RJ54-SS-15-D-UK-EU"
-  ],
-
-  "umbrella_to_variants": {
-    "RJ50-SFDAF-25D": ["RJ50-SFDAF-25D(SS)", "RJ50-BFDAF-25D(BLK)"],
-    "RJ64-10-new colors": ["RJ64-10-PTC", "RJ64-10-BTR", "RJ64-10-LVD"],
-    "RJ15-7-LL-D Color Variations": ["RJ15-7-LL-DR", "RJ15-7-LL-DG", "RJ15-7-LL-DW"]
+  "_comment": "Summer's PD Table / HTML Build config. Edit to add/remove sku_aliases, mp_overrides, or manual data injections. Reloaded by rebuild_pdtable.py and build.py each run. 5/19: after_sales_improvement field deleted - ASI source of truth is now Tracker col E (NPD/ASI). Blank = NPD, 'ASI' = ASI. Maintain in the Tracker, not here.",
+  "_sku_aliases_note": "Tracker SKU -> canonical PD Table name. Used in rebuild gap analysis AND build.py tracker-row matching. 5/12: G4-AS=G4-LS (Cottee typo, PD uses LS); 9TW-V3=9TW-V2 (V3 is V2); DIS-V2-CA-CO=DIS-V2 (Tracker has CA-CO suffix).",
+  "sku_aliases": {
+    "RJ38-G4-AS": "RJ38-G4-LS",
+    "RJ38-9TW-V3": "RJ38-9TW-V2",
+    "RJ56-DIS-V2-CA-CO": "RJ56-DIS-V2"
   },
-
-  "manual_additions": [
-    {
-      "_note": "RJ15-7-LL slow cooker — 3 color variants (Burgundy/Grey/White-Cream). PM hasn't added to PD updates yet; Summer is providing business info inline.",
-      "skus": ["RJ15-7-LL-DR", "RJ15-7-LL-DG", "RJ15-7-LL-DW"],
-      "pm": "Rowling Luo",
-      "fields": {
-        "Category": "Slow cooker",
-        "Tier": "3",
-        "Brand": "CHEFMAN",
-        "Description": "7qt slow cooker with digital display",
-        "Top Feature": "Digital display\nSS housing",
-        "Sales Sample ETA": "TBC",
-        "Est. 1st Inspection": "3/27/2026",
-        "Factory": "Kunge",
-        "Initial Market": "USA",
-        "1st Cost Estimate": "$12.85",
-        "Port": "Shanghai",
-        "Duty": "2.7%+10%",
-        "40'HC": "1672"
-      }
-    }
-  ]
+  "_mp_overrides_note": "PD Table SKUs to force-treat as MP (Project Released) so they're excluded from page1 cards. Use when PM split a multi-color umbrella in PD updates but Tracker collapses to one MP row. 5/12: RJ64-10 new colors (Tracker 'RJ64-10-new colors' MP covers 4 PD Table color SKUs).",
+  "mp_overrides": [
+    "RJ64-10-V2-PTC",
+    "RJ64-10-V2-BTR",
+    "RJ64-10-V2-AQU",
+    "RJ64-10-V2-LVD"
+  ],
+  "_manual_additions_note": "Use only when a project is genuinely missing from PD updates xlsx. Format: [{\"_note\":\"...\",\"skus\":[...],\"pm\":\"...\",\"fields\":{...}}]",
+  "manual_additions": []
 }

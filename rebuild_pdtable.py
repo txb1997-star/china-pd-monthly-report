@@ -9,11 +9,21 @@ Pure mirror SOP:
   5. Print diff grouped by PM (Summer broadcasts to PMs to align)
 
 Config file: Monthly PD Report/pd_table_config.json
-  - after_sales_improvement: SKUs that don't show on Page 1
-  - umbrella_to_variants: umbrella SKU (Tracker) → variants (PD Table)
   - manual_additions: extra rows to inject (when PM hasn't put in PD updates yet)
   - sku_aliases (optional): Tracker SKU → canonical name
+  - mp_overrides (optional): PD Table SKUs to force-treat as MP
   - manually_excluded (optional): SKUs to drop entirely
+
+Note (2026-05-07): umbrella_to_variants config field removed. Variant
+expansion now happens during PD updates parsing — parse_sku_cell()
+splits multi-SKU cells (e.g. "RJ50-SFDAF-25D(SS)\\nRJ50-BFDAF-25D(BLK)")
+into separate PD Table rows that share the column's commercial fields.
+Tracker P/V column (added 5/6) is the single source of variant relations.
+
+Note (2026-05-19): after_sales_improvement config field removed. ASI
+status now lives in Tracker col E (NPD/ASI). Blank col E = NPD by
+default; 'ASI' = After Sales Improvement. compare_pd_vs_tracker derives
+the ASI set by scanning the Tracker.
 """
 import json
 import re
@@ -116,8 +126,13 @@ PM_ORDER = [
 def normalize_pm(raw_pm, sheet_name):
     if raw_pm:
         s = str(raw_pm).strip()
-        if s == 'Serena': return 'Serena Sun'
-        if s == 'Tammy': return 'Chris Zhou'  # MX projects under Chris
+        # 5/12: add short-name aliases (PD updates uses 'Chris', 'Cottee', etc.)
+        short_to_full = {
+            'Chris': 'Chris Zhou', 'Cottee': 'Cottee Wei',
+            'Rowling': 'Rowling Luo', 'Liz': 'Liz Liu', 'Serena': 'Serena Sun',
+            'Tammy': 'Chris Zhou',  # MX projects under Chris
+        }
+        if s in short_to_full: return short_to_full[s]
         if s in ('Liz Liu', 'Cottee Wei', 'Serena Sun', 'Rowling Luo', 'Chris Zhou'):
             return s
         return s
@@ -129,7 +144,7 @@ def normalize_pm(raw_pm, sheet_name):
     }
     return sheet_pm.get(sheet_name, 'Chris Zhou')
 
-SKU_RE = re.compile(r'^[A-Za-z]{1,5}\d+[\w\-()/]*$')
+SKU_RE = re.compile(r'^[A-Za-z]{1,5}-?\d+[\w\-()/]*$')  # 5/12: allow optional `-` after letters so SW-294 parses; canonical patterns (RJ38, C60, etc.) still match.
 
 def parse_sku_cell(raw):
     if raw is None: return []
@@ -311,7 +326,10 @@ def write_xlsx(records):
 # === Tracker comparison ===
 def clean_sku(raw):
     if raw is None: return ''
-    return str(raw).split('\n')[0].strip()
+    s = str(raw).split('\n')[0].strip()
+    # 5/12: normalize fullwidth Chinese parens to ASCII (defensive — Tracker
+    # has had '(SS）' with mixed paren widths)
+    return s.replace('（', '(').replace('）', ')')
 
 def load_pd_table_skus_with_pm():
     wb = openpyxl.load_workbook(FINAL_OUT, data_only=True)
@@ -336,7 +354,12 @@ def load_pd_table_skus_with_pm():
     return out
 
 def load_tracker_skus(tracker_path, config):
-    """Returns dict: SKU → (PM, category, current_status)."""
+    """Returns dict: SKU → (PM, category, current_status, npd_asi).
+
+    Tracker layout (5/19 added NPD/ASI column at E, all later cols shifted +1):
+      A=#  B=品类  C=P/V  D=SKU  E=NPD/ASI  F=风险  G=PM  H=Tier  I=上次更新
+      J=Current Status
+    """
     wb = openpyxl.load_workbook(tracker_path, data_only=True)
     ws = wb.active
     aliases = config.get('sku_aliases', {})
@@ -344,18 +367,29 @@ def load_tracker_skus(tracker_path, config):
     pm_full = {'Cottee': 'Cottee Wei', 'Rowling': 'Rowling Luo', 'Serena': 'Serena Sun',
                'Chris': 'Chris Zhou', 'Liz': 'Liz Liu'}
     for r in range(2, ws.max_row + 1):
-        sku = ws.cell(r, 3).value
-        pm = ws.cell(r, 5).value
-        cat = ws.cell(r, 2).value
-        status = ws.cell(r, 8).value  # Current Status
+        sku = ws.cell(r, 4).value      # D
+        npd_asi = ws.cell(r, 5).value  # E (5/19 new)
+        pm = ws.cell(r, 7).value       # was col 6, now G after NPD/ASI insert
+        cat = ws.cell(r, 2).value      # unchanged (B)
+        status = ws.cell(r, 10).value  # was col 9, now J
         if not sku: continue
         s = clean_sku(sku)
         if not s: continue
         canonical = aliases.get(s, s)
         pm_clean = str(pm).strip() if pm else ''
-        out[canonical] = (pm_full.get(pm_clean, pm_clean),
-                          str(cat).split('\n')[0].strip() if cat else '',
-                          str(status).strip() if status else '')
+        npd_asi_clean = (str(npd_asi).strip().upper() if npd_asi else '')
+        new_entry = (pm_full.get(pm_clean, pm_clean),
+                     str(cat).split('\n')[0].strip() if cat else '',
+                     str(status).strip() if status else '',
+                     npd_asi_clean)
+        # 5/12: alias collisions (e.g. V2+V3 → V2) — prefer MP status over TBD
+        existing = out.get(canonical)
+        if existing is not None:
+            ex_status = (existing[2] or '').upper()
+            new_status = (new_entry[2] or '').upper()
+            if ex_status == 'MP' and new_status != 'MP':
+                continue  # keep existing MP
+        out[canonical] = new_entry
     return out
 
 def compare_pd_vs_tracker(config):
@@ -363,36 +397,31 @@ def compare_pd_vs_tracker(config):
     print(f"\n  Reading Tracker: {tracker_path.name}")
     pd_skus = load_pd_table_skus_with_pm()
     tracker_skus = load_tracker_skus(tracker_path, config)
-    asi = set(config.get('after_sales_improvement', []))
-    umbrella = config.get('umbrella_to_variants', {})
-    variant_to_umbrella = {v: u for u, vs in umbrella.items() for v in vs}
+    # 5/19: ASI source = Tracker col E (npd_asi field in tuple position 3), not config.
+    asi = {sku for sku, info in tracker_skus.items() if len(info) >= 4 and info[3] == 'ASI'}
 
     # Tracker → PD: missing means PM hasn't added to PD updates yet
-    # Filters: ASI excluded (not Page 1 anyway), MP excluded (released, no business info needed)
+    # Filters: ASI excluded (not Page 1 anyway), MP excluded (released).
+    # Note: parent SKUs that have no PD updates row will surface here — that
+    # is the desired behavior. If the parent base SKU is genuinely sold
+    # (not just an abstract anchor for variants), PM should add it to
+    # PD updates. If it's a variant-only product family, Summer can decide
+    # whether to suppress the warning by adding the parent to ASI / excluded.
     missing_in_pd = []
     mp_in_tracker = []
     for sku, info in tracker_skus.items():
         status = info[2] if len(info) >= 3 else ''
-        # MP first — Project Released counts MP or Inspection (Summer 5-04: same thing)
         if status.upper() in ('MP', 'INSPECTION'):
             mp_in_tracker.append((sku, info))
             continue  # released, no PD Table card needed
         if sku in asi: continue  # ASI (non-MP) not expected on PD Table
         if sku in pd_skus: continue
-        # Umbrella check: if tracker has umbrella, PD has any variant
-        if sku in umbrella:
-            if any(v in pd_skus for v in umbrella[sku]):
-                continue
         missing_in_pd.append((sku, info))
 
     # PD → Tracker: missing means rename / split / orphan
     missing_in_tracker = []
     for sku, info in pd_skus.items():
         if sku in tracker_skus: continue
-        # Variant check: if PD variant, Tracker may have umbrella
-        if sku in variant_to_umbrella:
-            umb = variant_to_umbrella[sku]
-            if umb in tracker_skus: continue
         missing_in_tracker.append((sku, info))
 
     return tracker_path.name, pd_skus, tracker_skus, missing_in_pd, missing_in_tracker, mp_in_tracker
@@ -435,20 +464,20 @@ def print_diff(tracker_name, pd_skus, tracker_skus, missing_in_pd, missing_in_tr
 if __name__ == '__main__':
     print("=== Summer's Monthly PD Table -- rebuild ===\n")
     config = load_config()
-    print(f"  Config: {len(config.get('after_sales_improvement', []))} ASI, "
-          f"{len(config.get('umbrella_to_variants', {}))} umbrella maps, "
-          f"{len(config.get('manual_additions', []))} manual additions group(s)")
-    src = find_pd_updates()
-    print(f"  Reading PD updates: {src.name}")
-    records = load_pdupdates(src)
-    records = apply_excluded(records, config)
+    print(f"  Config: {len(config.get('manual_additions', []))} manual additions group(s) "
+          f"(ASI now read from Tracker col E)")
+    SRC_PATH = find_pd_updates()
+    print(f"  Reading PD updates: {SRC_PATH.name}")
+    records = load_pdupdates(SRC_PATH)
     records = apply_manual_additions(records, config)
+    records = apply_excluded(records, config)
     print(f"\n  Total records: {len(records)}")
-    by_pm = {}
-    for r in records:
-        by_pm[r['_pm']] = by_pm.get(r['_pm'], 0) + 1
-    for pm, n in sorted(by_pm.items()):
-        print(f"    {pm}: {n}")
+    pm_counts = {}
+    for rec in records:
+        pm = rec.get('_pm', 'Unknown')
+        pm_counts[pm] = pm_counts.get(pm, 0) + 1
+    for pm in sorted(pm_counts):
+        print(f"    {pm}: {pm_counts[pm]}")
     write_xlsx(records)
     diff = compare_pd_vs_tracker(config)
     print_diff(*diff)

@@ -110,8 +110,8 @@ TRANSLATIONS_PATH = MONTHLY_DIR / 'translations.json'
 NOW = datetime.now()
 MONTH_NAME = NOW.strftime('%b')   # 'Apr'
 YEAR = NOW.strftime('%Y')          # '2026'
-# Override for current build (data is April 2026)
-MONTH_NAME = 'Apr'
+# Override for current build (data is May 2026)
+MONTH_NAME = 'May'
 YEAR = '2026'
 
 OUT_NAME = f'China_PD_Monthly_Report_{MONTH_NAME}{YEAR}.html'
@@ -152,22 +152,6 @@ STATUS_TO_PIPELINE = {
     'Culinary PP': 9,
     'MP': 10, 'MP中': 10, 'Inspection': 10,
 }
-
-# Umbrella SKU expansion for Page 1 (Sales-facing cards).
-# Some PD Table SKUs are 'umbrella' entries that bundle several color/finish
-# variants under one row. Page 2 (Pipeline) and Page 3 (Tracker) keep them
-# merged because dev progress is shared, but Sales wants to see each visible
-# variant as its own card. For each umbrella SKU we list the variant SKUs that
-# should render as separate cards — each variant copies all commercial info
-# from the umbrella row but uses its own image (or shares the umbrella's image
-# when the column has only one).
-# Confirmed by Summer 2026-04-30. ASK before adding more entries.
-SPLIT_UMBRELLA_SKUS = {
-    'RJ50-SFDAF-25D':     ['RJ50-SFDAF-25D(SS)', 'RJ50-BFDAF-25D(BLK)'],
-    'RJ62-20A-Series':    ['RJ62-BLK', 'RJ62-WHT'],
-    'RJ64-10-new colors': ['RJ64-10-PTC', 'RJ64-10-BTR', 'RJ64-10-LVD', 'RJ64-10-Aqu'],
-}
-
 
 # PM section ordering (HTML displays in this order)
 PM_SECTION_ORDER = [
@@ -248,6 +232,8 @@ def normalize_sku(raw):
     s = str(raw)
     # Cut at first newline (annotation block)
     s = s.split('\n')[0]
+    # 5/12: defensive fullwidth → halfwidth bracket fix
+    s = s.replace('（', '(').replace('）', ')')
     return s.strip()
 
 
@@ -278,13 +264,24 @@ def clean_status(s):
 # -------------------------------------------------------------
 # Source loaders
 # -------------------------------------------------------------
-def load_tracker(path):
+def load_tracker(path, sku_aliases=None):
     """Load Tracker. Returns list of dicts in row-order, plus pm_section list.
 
+    Tracker layout (26 cols, 5/19 added E=NPD/ASI; all later cols shifted +1):
+      A=#  B=品类  C=P/V  D=SKU  E=NPD/ASI  F=风险  G=PM  H=Tier  I=上次更新
+      J=Current Status  K=卡点/风险  L=下一步Action  M=PA状态  N=PO/订单状态  O=CRD
+      P..Z = Kick off … MP (11 stage cols, Inspection removed)
+
     Each dict has fields:
-      num, sku, sku_raw, category, risk, pm, tier, last_update, current_status,
-      issue, next_action, po_status, crd, stages (dict of stage_label → date_or_check),
-      pm_section
+      num, sku, sku_raw, pv, category, npd_asi, risk, pm, tier, last_update,
+      current_status, issue, next_action, po_status, crd,
+      stages (dict of stage_label → date_or_check), pm_section
+
+    5/12: sku_aliases (Tracker SKU → canonical PD Table name) applied to `sku`
+    after normalize_sku so HTML join uses canonical form. `sku_raw` preserves
+    the original Tracker spelling for debug.
+    5/19: NPD/ASI col E added; ASI source of truth is now Tracker col E
+    instead of pd_table_config.json's after_sales_improvement list.
     """
     if not path.exists():
         raise FileNotFoundError(f'Tracker not found: {path}')
@@ -293,20 +290,21 @@ def load_tracker(path):
     ws = wb['Sheet1']
     rows = []
     current_section = ''
+    aliases = sku_aliases or {}
 
-    # Tracker stage cols: C13-C24
+    # Tracker stage cols: P=16 … Z=26 after 5/19 NPD/ASI col insert
     stage_label_map = {
-        13: 'Kick off', 14: 'Detail Design', 15: 'Prototype',
-        16: 'Tooling', 17: 'FOT', 18: 'EB',
-        19: 'Culinary EB', 20: 'Culinary Claims',
-        21: 'PP', 22: 'Culinary PP', 23: 'MP', 24: 'Inspection',
+        16: 'Kick off', 17: 'Detail Design', 18: 'Prototype',
+        19: 'Tooling', 20: 'FOT', 21: 'EB',
+        22: 'Culinary EB', 23: 'Culinary Claims',
+        24: 'PP', 25: 'Culinary PP', 26: 'MP',
     }
 
     for r in range(2, ws.max_row + 1):
-        c1 = ws.cell(r, 1).value
-        c3 = ws.cell(r, 3).value  # SKU
+        c1 = ws.cell(r, 1).value     # #
+        c4 = ws.cell(r, 4).value     # SKU (was c3 pre-5/6)
         c1s = cellstr(c1)
-        c3s = cellstr(c3)
+        c4s = cellstr(c4)
 
         # PM section header
         if is_pm_section_header(c1s):
@@ -314,12 +312,13 @@ def load_tracker(path):
             continue
 
         # Skip empty/non-data rows
-        if not c3s:
+        if not c4s:
             continue
 
-        sku = normalize_sku(c3s)
+        sku = normalize_sku(c4s)
         if not sku:
             continue
+        sku = aliases.get(sku, sku)  # 5/12: apply Tracker→canonical alias
 
         # Stage cells: '✓' = completed past stage; date = scheduled/done; empty = not yet
         stages = {}
@@ -330,17 +329,20 @@ def load_tracker(path):
         rows.append({
             'num': cellstr(c1),
             'sku': sku,
-            'sku_raw': c3s,
+            'sku_raw': c4s,
+            'pv': cellstr(ws.cell(r, 3).value),         # 'Parent' / 'Variant' / ''
             'category': cellstr(ws.cell(r, 2).value),
-            'risk': cellstr(ws.cell(r, 4).value),
-            'pm': cellstr(ws.cell(r, 5).value),
-            'tier': cellstr(ws.cell(r, 6).value),
-            'last_update': cellstr(ws.cell(r, 7).value),
-            'current_status': clean_status(ws.cell(r, 8).value),
-            'issue': cellstr(ws.cell(r, 9).value),
-            'next_action': cellstr(ws.cell(r, 10).value),
-            'po_status': cellstr(ws.cell(r, 11).value),
-            'crd': cellstr(ws.cell(r, 12).value),
+            'npd_asi': cellstr(ws.cell(r, 5).value),    # 5/19: new E col, 'ASI' or '' (blank = NPD)
+            'risk': cellstr(ws.cell(r, 6).value),       # was 5, shifted by E=NPD/ASI insert 5/19
+            'pm': cellstr(ws.cell(r, 7).value),         # was 6
+            'tier': cellstr(ws.cell(r, 8).value),       # was 7
+            'last_update': cellstr(ws.cell(r, 9).value),# was 8
+            'current_status': clean_status(ws.cell(r, 10).value),  # was 9
+            'issue': cellstr(ws.cell(r, 11).value),     # was 10
+            'next_action': cellstr(ws.cell(r, 12).value),# was 11
+            'pa_status': cellstr(ws.cell(r, 13).value), # was 12
+            'po_status': cellstr(ws.cell(r, 14).value), # was 13
+            'crd': cellstr(ws.cell(r, 15).value),       # was 14
             'stages': stages,
             'pm_section': current_section,
         })
@@ -484,6 +486,103 @@ def _sku_image_aliases(sku):
             yield parent
 
 
+def _extract_image_in_cell_raw(path):
+    """5/19: Excel 365 'Image in cell' (rich data, NOT image-over-cell) support.
+
+    Image-in-cell stores the image as the cell's *value* via a rich-data
+    metadata chain. openpyxl's ws._images doesn't see these. We unzip and
+    walk the XML manually:
+      cell.vm (1-based) -> metadata.xml/valueMetadata[vm-1].rc.@v
+                        -> rdrichvalue.xml/rv[v].<v>0</v> = LocalImageIdentifier L
+                        -> richValueRel.xml/rel[L].@r:id = rIdN
+                        -> _rels/richValueRel.xml.rels[rIdN] -> media/imageN
+
+    Returns: dict {sheet_name: {(row, col): raw_image_bytes}}
+             Empty on missing rich data parts or parse failure.
+    """
+    import zipfile, re as _re
+    from openpyxl.utils import column_index_from_string
+    out = {}
+    if not path or not path.exists():
+        return out
+    try:
+        with zipfile.ZipFile(path) as z:
+            names = set(z.namelist())
+            required = ('xl/metadata.xml', 'xl/richData/rdrichvalue.xml',
+                        'xl/richData/richValueRel.xml',
+                        'xl/richData/_rels/richValueRel.xml.rels',
+                        'xl/_rels/workbook.xml.rels', 'xl/workbook.xml')
+            if not all(r in names for r in required):
+                return out
+
+            # 1) valueMetadata: [(t, v), ...] 0-based
+            md_xml = z.read('xl/metadata.xml').decode('utf-8', 'ignore')
+            vm_list = []
+            vm_block = _re.search(r'<valueMetadata[^>]*>(.*?)</valueMetadata>', md_xml, _re.DOTALL)
+            if vm_block:
+                for bk in _re.finditer(r'<rc\s+t="(\d+)"\s+v="(\d+)"', vm_block.group(1)):
+                    vm_list.append((int(bk.group(1)), int(bk.group(2))))
+
+            # 2) rdrichvalue: rv index -> LocalImageIdentifier (first <v>)
+            rv_xml = z.read('xl/richData/rdrichvalue.xml').decode('utf-8', 'ignore')
+            rv_local = []
+            for m in _re.finditer(r'<rv\b[^>]*>(.*?)</rv>', rv_xml, _re.DOTALL):
+                vs = _re.findall(r'<v>([^<]+)</v>', m.group(1))
+                rv_local.append(int(vs[0]) if vs else None)
+
+            # 3) richValueRel rel order -> list of rIds
+            rvr_xml = z.read('xl/richData/richValueRel.xml').decode('utf-8', 'ignore')
+            rvr_rids = _re.findall(r'<rel\s+[^>]*r:id="(rId\d+)"', rvr_xml)
+
+            # 4) rId -> image target
+            rels_xml = z.read('xl/richData/_rels/richValueRel.xml.rels').decode('utf-8', 'ignore')
+            rid_to_target = {}
+            for m in _re.finditer(r'<Relationship\s+Id="(rId\d+)"[^>]*Target="([^"]+)"', rels_xml):
+                rid_to_target[m.group(1)] = m.group(2)
+
+            # 5) sheet name -> worksheet xml path
+            wb_xml = z.read('xl/workbook.xml').decode('utf-8', 'ignore')
+            wb_rels_xml = z.read('xl/_rels/workbook.xml.rels').decode('utf-8', 'ignore')
+            rid_to_sheet_target = {}
+            for m in _re.finditer(r'<Relationship\s+Id="(rId\d+)"[^>]*Target="(worksheets/[^"]+)"', wb_rels_xml):
+                rid_to_sheet_target[m.group(1)] = m.group(2)
+            sheet_to_file = {}
+            for m in _re.finditer(r'<sheet\s+name="([^"]+)"[^>]*r:id="(rId\d+)"', wb_xml):
+                name = m.group(1).replace('&amp;', '&').replace('&lt;', '<').replace('&gt;', '>')
+                rid = m.group(2)
+                if rid in rid_to_sheet_target:
+                    sheet_to_file[name] = 'xl/' + rid_to_sheet_target[rid]
+
+            # 6) Walk each worksheet for cells with vm attribute
+            for sheet_name, sheet_file in sheet_to_file.items():
+                if sheet_file not in names:
+                    continue
+                ws_xml = z.read(sheet_file).decode('utf-8', 'ignore')
+                for m in _re.finditer(r'<c\s+r="([A-Z]+)(\d+)"[^>]*\svm="(\d+)"', ws_xml):
+                    col_letter, row_num, vm = m.group(1), int(m.group(2)), int(m.group(3))
+                    col = column_index_from_string(col_letter)
+                    if vm <= 0 or vm > len(vm_list):
+                        continue
+                    t, v = vm_list[vm - 1]
+                    if t != 1 or v < 0 or v >= len(rv_local):
+                        continue
+                    local = rv_local[v]
+                    if local is None or local < 0 or local >= len(rvr_rids):
+                        continue
+                    target = rid_to_target.get(rvr_rids[local])
+                    if not target:
+                        continue
+                    # 'Target' is relative to xl/richData/, e.g. '../media/image8.png'
+                    target_path = ('xl/' + target.replace('../', '')).replace('xl/xl/', 'xl/')
+                    if target_path not in names:
+                        continue
+                    out.setdefault(sheet_name, {})[(row_num, col)] = z.read(target_path)
+    except Exception as e:
+        print(f'      WARN: image-in-cell parse failed ({e}), continuing with image-over-cell only')
+        return {}
+    return out
+
+
 def extract_sku_images(path):
     """Extract embedded product images from PD updates xlsx, keyed by SKU.
 
@@ -500,6 +599,9 @@ def extract_sku_images(path):
     Trailing '(SS)' / '(BLK)' / etc. parentheticals are color/material codes —
     we register the bare parent SKU as an additional alias so umbrella PD
     Table entries can match. See _sku_image_aliases().
+
+    5/19: now supports both 'image-over-cell' (traditional, ws._images) and
+    'image-in-cell' (Excel 365 rich-data). See _extract_image_in_cell_raw().
 
     Returns: dict {sku → 'data:image/jpeg;base64,...'} for use as <img src=...>.
              Returns {} on failure (Pillow missing, file unreadable, etc.).
@@ -527,6 +629,30 @@ def extract_sku_images(path):
     # within the same visual row have rowOff differences << 300000 EMU
     # (~0.33"), images in different visual rows differ by > 300000 EMU.
     ROW_BUCKET_EMU = 300000
+
+    def _process_bytes(img_bytes):
+        """Process raw image bytes -> base64 JPEG data URI, or '' on error."""
+        try:
+            pil = PILImage.open(io.BytesIO(img_bytes))
+            if pil.mode in ('RGBA', 'LA'):
+                bg = PILImage.new('RGB', pil.size, (255, 255, 255))
+                bg.paste(pil, mask=pil.split()[-1])
+                pil = bg
+            elif pil.mode == 'P':
+                pil = pil.convert('RGBA')
+                bg = PILImage.new('RGB', pil.size, (255, 255, 255))
+                bg.paste(pil, mask=pil.split()[-1])
+                pil = bg
+            elif pil.mode != 'RGB':
+                pil = pil.convert('RGB')
+            pil.thumbnail((IMAGE_THUMB_SIZE, IMAGE_THUMB_SIZE), PILImage.LANCZOS)
+            buf = io.BytesIO()
+            pil.save(buf, format='JPEG',
+                     quality=IMAGE_JPEG_QUALITY, optimize=True)
+            return ('data:image/jpeg;base64,'
+                    + base64.b64encode(buf.getvalue()).decode('ascii'))
+        except Exception:
+            return ''
 
     def _process(img_obj):
         """Process one openpyxl Image -> base64 JPEG data URI, or '' on error."""
@@ -561,9 +687,17 @@ def extract_sku_images(path):
             if alias and alias not in images:
                 images[alias] = data_uri
 
+    # 5/19: Pre-extract image-in-cell raw bytes for all sheets at once
+    cell_images = _extract_image_in_cell_raw(path)
+    cell_image_count = sum(len(v) for v in cell_images.values())
+    if cell_image_count:
+        print(f'      image-in-cell: {cell_image_count} cell-anchored images found across {len(cell_images)} sheets')
+
     for sheet_name in wb.sheetnames:
         ws = wb[sheet_name]
-        if not getattr(ws, '_images', None):
+        has_over = bool(getattr(ws, '_images', None))
+        has_in_cell = bool(cell_images.get(sheet_name))
+        if not has_over and not has_in_cell:
             continue
 
         # Build column -> list-of-SKUs map for this sheet from Row 10.
@@ -587,16 +721,54 @@ def extract_sku_images(path):
             if skus_in_cell:
                 col_to_skus[col_idx] = skus_in_cell
 
+        # Process image-in-cell first (one image per cell, col matches SKU col)
+        if has_in_cell:
+            for (row, col), img_bytes in cell_images[sheet_name].items():
+                skus = col_to_skus.get(col)
+                if not skus:
+                    # tolerate 1-col drift like over-cell branch does
+                    for offset in (-1, 1):
+                        skus = col_to_skus.get(col + offset)
+                        if skus:
+                            break
+                if not skus:
+                    skipped += 1
+                    continue
+                data_uri = _process_bytes(img_bytes)
+                if not data_uri:
+                    skipped += 1
+                    continue
+                for sku in skus:
+                    _register(sku, data_uri)
+
+        # Then process traditional image-over-cell via openpyxl
+        if not has_over:
+            continue
+
         # Group images by their target column (1-indexed).
+        # 5/19: skip zero-area "ghost" images (TwoCellAnchor with _from == to).
+        # PMs sometimes delete/replace images and Excel keeps the binary in the
+        # zip with a collapsed anchor frame (invisible in Excel UI). E.g. an
+        # invisible water-bottle PNG in Coffee&Iceman col 5 was getting matched
+        # to RJ44-CB instead of its real grinder image.
         images_by_col = {}
         for img in ws._images:
             try:
-                col = img.anchor._from.col + 1
-                row_off = img.anchor._from.rowOff or 0
-                col_off = img.anchor._from.colOff or 0
+                fc = img.anchor._from
+                tc = getattr(img.anchor, 'to', None)
+                col = fc.col + 1
+                row_off = fc.rowOff or 0
+                col_off = fc.colOff or 0
             except AttributeError:
                 skipped += 1
                 continue
+            # Zero-area filter: TwoCellAnchor where to corner == from corner
+            if tc is not None:
+                same_col = (tc.col == fc.col and (tc.colOff or 0) == (fc.colOff or 0))
+                same_row = (tc.row == fc.row and (tc.rowOff or 0) == (fc.rowOff or 0))
+                if same_col or same_row:
+                    skipped += 1
+                    continue
             images_by_col.setdefault(col, []).append((row_off, col_off, img))
 
         for col, img_entries in images_by_col.items():
@@ -654,13 +826,19 @@ def load_pd_config():
     return json.loads(config_path.read_text(encoding='utf-8'))
 
 
-def compute_mp_set(tracker_rows):
+def compute_mp_set(tracker_rows, config=None):
     """Return set of SKUs whose Weekly Tracker Current Status is MP or Inspection.
     Both stages count as 'Project Released' (Summer 2026-05-04: 'Inspection 和 MP
-    是一样的')."""
+    是一样的').
+
+    5/12: union with config['mp_overrides'] — PD Table SKUs to force-treat as MP
+    when Tracker collapses multiple color variants into one MP row.
+    """
     released_statuses = {'MP', 'INSPECTION'}
-    return {r['sku'] for r in tracker_rows
+    base = {r['sku'] for r in tracker_rows
             if (r.get('current_status') or '').strip().upper() in released_statuses}
+    overrides = set((config or {}).get('mp_overrides', []))
+    return base | overrides
 
 
 def build_page1_data(pd_main, tracker_rows, white_list, asi_set, mp_set, images=None):
@@ -694,66 +872,58 @@ def build_page1_data(pd_main, tracker_rows, white_list, asi_set, mp_set, images=
                 if any(c.isdigit() for c in cost):
                     cost = '$' + cost.lstrip('$ ')
 
-            # Umbrella expansion: if this PD Table SKU is registered in
-            # SPLIT_UMBRELLA_SKUS, render one card per listed variant. Each
-            # variant card displays the variant's own SKU and image but copies
-            # every commercial / Tracker field from the umbrella row.
-            variants = SPLIT_UMBRELLA_SKUS.get(sku, [sku])
-            umbrella_image = images.get(sku, '')
+            # 1 PD Table row = 1 Page 1 card (umbrella expansion removed
+            # 2026-05-07: rebuild_pdtable.py now splits multi-SKU cells in
+            # PD updates directly so each variant gets its own PD Table row.
+            # ASI / MP exclusion: ASI lives in config; MP is auto-detected
+            # from Tracker Current Status.
+            if sku in asi_set or sku in mp_set:
+                continue
 
-            for variant_sku in variants:
-                # ASI / MP exclusion (Phase 2 — Project Released): these SKUs
-                # are intentionally hidden from Page 1 cards. ASI lives in
-                # config; MP is auto-detected from Tracker Current Status.
-                if variant_sku in asi_set or variant_sku in mp_set:
-                    continue
-                # Variant image: prefer the variant's own; fall back to the
-                # umbrella's image (one shared rendering for the whole group).
-                variant_image = images.get(variant_sku, '') or umbrella_image
-
-                # Page 1 uses PD Table as the authoritative source for tier and
-                # category. If a SKU has empty tier/category in PD Table, it's
-                # typically a US-side project that China is only tracking (not
-                # commercializing) — those are intentionally hidden from the
-                # Sales card view.
-                item = {
-                    'sku': variant_sku,
-                    'category': normalize_category(rec.get('category', '')),
-                    'tier': rec.get('tier', ''),
-                    'brand': rec.get('brand', ''),
-                    'description': rec.get('description', ''),
-                    'topFeature': rec.get('top_feature', ''),
-                    'uf1': rec.get('uf1', ''),
-                    'uf2': rec.get('uf2', ''),
-                    'uf3': rec.get('uf3', ''),
-                    'msrp': rec.get('msrp', ''),
-                    'sampleETA': rec.get('sample_eta', ''),
-                    'poPlaced': rec.get('po_placed', ''),
-                    'estInspection': rec.get('est_inspection', ''),
-                    'factory': rec.get('factory', ''),
-                    'market': rec.get('market', ''),
-                    'cost': cost,
-                    'buffer': rec.get('buffer', ''),
-                    'port': rec.get('port', ''),
-                    'duty': rec.get('duty', ''),
-                    'hc40': rec.get('hc40', ''),
-                    'compModel': rec.get('comp_model', ''),
-                    'rjDiff': rec.get('rj_diff', ''),
-                    'note1': rec.get('note1', ''),
-                    'note2': rec.get('note2', ''),
-                    'pmSection': section,
-                    # Tracker-derived fields — variants share the umbrella's row
-                    'currentStatus': tr['current_status'] if tr else '',
-                    'risk': tr['risk'] if tr else '',
-                    'crd': tr['crd'] if tr else '',
-                    'pm': tr['pm'] if tr else '',
-                    # White-list flag — check both umbrella and variant just in
-                    # case Project List has either form
-                    'onProjectList': (sku in white_list) or (variant_sku in white_list),
-                    # Embedded base64 thumbnail (empty falls back to placeholder)
-                    'image': variant_image,
-                }
-                items.append(item)
+            # Page 1 uses PD Table as the authoritative source for tier and
+            # category. If a SKU has empty tier/category in PD Table, it's
+            # typically a US-side project that China is only tracking (not
+            # commercializing) — those are intentionally hidden from the
+            # Sales card view.
+            item = {
+                'sku': sku,
+                'category': normalize_category(rec.get('category', '')),
+                'tier': rec.get('tier', ''),
+                'brand': rec.get('brand', ''),
+                'description': rec.get('description', ''),
+                'topFeature': rec.get('top_feature', ''),
+                'uf1': rec.get('uf1', ''),
+                'uf2': rec.get('uf2', ''),
+                'uf3': rec.get('uf3', ''),
+                'msrp': rec.get('msrp', ''),
+                'sampleETA': rec.get('sample_eta', ''),
+                'poPlaced': rec.get('po_placed', ''),
+                'estInspection': rec.get('est_inspection', ''),
+                'factory': rec.get('factory', ''),
+                'market': rec.get('market', ''),
+                'cost': cost,
+                'buffer': rec.get('buffer', ''),
+                'port': rec.get('port', ''),
+                'duty': rec.get('duty', ''),
+                'hc40': rec.get('hc40', ''),
+                'compModel': rec.get('comp_model', ''),
+                'rjDiff': rec.get('rj_diff', ''),
+                'note1': rec.get('note1', ''),
+                'note2': rec.get('note2', ''),
+                'pmSection': section,
+                'currentStatus': tr['current_status'] if tr else '',
+                'risk': tr['risk'] if tr else '',
+                'crd': tr['crd'] if tr else '',
+                'pm': tr['pm'] if tr else '',
+                'pv': tr.get('pv', '') if tr else '',
+                'onProjectList': sku in white_list,
+                # Embedded base64 thumbnail (empty falls back to placeholder
+                # icon in template). _sku_image_aliases() handles parenthetical
+                # color codes — e.g. images['RJ50-SFDAF-25D'] aliases to
+                # 'RJ50-SFDAF-25D(SS)' so SS/BLK siblings can share one image.
+                'image': images.get(sku, ''),
+            }
+            items.append(item)
     return items
 
 
@@ -819,6 +989,7 @@ def build_page3_data(tracker_rows, asi_set=None, pd_main_skus=None, mp_set=None)
         items.append({
             'num': str(i),
             'sku': row['sku'],
+            'pv': row.get('pv', ''),   # 'Parent' / 'Variant' / '' (Tracker C col, added 5/6)
             'category': row['category'],
             'risk': row['risk'],
             'pm': row['pm'],
@@ -831,6 +1002,7 @@ def build_page3_data(tracker_rows, asi_set=None, pd_main_skus=None, mp_set=None)
             'location': infer_location(row['next_action']),
             'pmSection': row['pm_section'],
             'stages': row['stages'],
+            'paStatus': row.get('pa_status', ''),  # 5/12: PA (Product Authorization) signed status
             'poStatus': po_status,
             'poBuyer': po_buyer,
             'poRaw': row['po_status'],  # preserved for hover/tooltip if needed
@@ -895,8 +1067,9 @@ def build_summary_stats(page1, tracker_rows, asi_set, mp_set, pd_main_skus):
     - Project Released: total MP count.
     """
     visible = [p for p in page1 if p.get('category')]
-    asi_non_mp = asi_set - mp_set  # ASI items not yet MP — count toward Total
-    total = len(visible) + len(asi_non_mp)
+    # 5/12: stats.total = visible page1 cards exactly (Summer feedback —
+    # "stats == 可见卡片"; ASI active dev shown only on Page 2/3, not counted)
+    total = len(visible)
 
     def _is_panel_visible(r):
         # Now inclusive of "Tracker has it but PD Table doesn't" — those
@@ -915,23 +1088,50 @@ def build_summary_stats(page1, tracker_rows, asi_set, mp_set, pd_main_skus):
     return {'total': total, 'high': high, 'mid': mid, 't1': t1, 'released': released}
 
 
-def build_released_data(tracker_rows, mp_set):
+def build_released_data(tracker_rows, mp_set, pd_main=None):
     """Data for the 'Project Released' stat card dropdown.
-    Columns: SKU / PM / Category / PO info / CRD."""
-    items = []
+    Columns: SKU / PM / Category / PO info / CRD.
+
+    5/12: iterate mp_set so dropdown count == stats.released. Dedupe by SKU
+    (alias collisions like 9TW-V3→V2 used to produce duplicate rows). For
+    mp_overrides SKUs without a Tracker row, synthesize an entry using PD
+    Table category if available.
+    """
+    pd_main = pd_main or {}
+    tracker_by_sku = {}
     for r in tracker_rows:
-        if r['sku'] not in mp_set:
-            continue
-        po_status, po_buyer = parse_po(r.get('po_status', ''))
-        items.append({
-            'sku': r['sku'],
-            'pm': r.get('pm', ''),
-            'category': r.get('category', ''),
-            'poStatus': po_status,
-            'poBuyer': po_buyer,
-            'poRaw': r.get('po_status', ''),
-            'crd': r.get('crd', ''),
-        })
+        sku = r['sku']
+        existing = tracker_by_sku.get(sku)
+        # Prefer MP-status row over non-MP for duplicates from alias collision
+        if existing is None or (r.get('current_status', '').strip().upper() == 'MP'
+                                and existing.get('current_status', '').strip().upper() != 'MP'):
+            tracker_by_sku[sku] = r
+    items = []
+    for sku in sorted(mp_set):
+        r = tracker_by_sku.get(sku)
+        if r:
+            po_status, po_buyer = parse_po(r.get('po_status', ''))
+            items.append({
+                'sku': sku,
+                'pm': r.get('pm', ''),
+                'category': r.get('category', ''),
+                'poStatus': po_status,
+                'poBuyer': po_buyer,
+                'poRaw': r.get('po_status', ''),
+                'crd': r.get('crd', ''),
+            })
+        else:
+            # mp_overrides SKU — no Tracker row; pull category from PD Table
+            rec = pd_main.get(sku, {})
+            items.append({
+                'sku': sku,
+                'pm': rec.get('pm_section', '').split(' — ')[0] if rec.get('pm_section') else '',
+                'category': rec.get('category', ''),
+                'poStatus': '',
+                'poBuyer': '',
+                'poRaw': '',
+                'crd': '',
+            })
     return items
 
 
@@ -1044,7 +1244,7 @@ def translate_page3(items, trans_dict):
     out = []
     for p in items:
         new_p = dict(p)
-        for key in ['issue', 'nextAction', 'currentStatus', 'category', 'poRaw', 'crd']:
+        for key in ['issue', 'nextAction', 'currentStatus', 'category', 'poRaw', 'crd', 'paStatus']:
             if p.get(key):
                 new_p[key] = translate(p[key], trans_dict)
         out.append(new_p)
@@ -1084,7 +1284,7 @@ def report_untranslated(items_p1, items_p3, items_pipe, trans_dict):
                 untrans.add(v)
     # page3
     for p in items_p3:
-        for k in ['issue', 'nextAction', 'currentStatus', 'category', 'poRaw', 'crd']:
+        for k in ['issue', 'nextAction', 'currentStatus', 'category', 'poRaw', 'crd', 'paStatus']:
             v = p.get(k, '')
             if v and zh_pat.search(str(v)) and v not in trans_dict:
                 untrans.add(v)
@@ -1257,8 +1457,13 @@ def main():
     template = TEMPLATE_PATH.read_text(encoding='utf-8')
 
     print(f'[2/5] Loading data sources')
+    # Load config early so load_tracker can apply sku_aliases (5/12)
+    config = load_pd_config()
+    sku_aliases = config.get('sku_aliases', {})
+    if sku_aliases:
+        print(f'      sku_aliases applied: {len(sku_aliases)} mapping(s)')
     print(f'      tracker:    {TRACKER_PATH.name}')
-    tracker_rows = load_tracker(TRACKER_PATH)
+    tracker_rows = load_tracker(TRACKER_PATH, sku_aliases=sku_aliases)
     print(f'                  -> {len(tracker_rows)} SKU rows')
 
     print(f'      pd table:   {PDTABLE_PATH.name}')
@@ -1276,19 +1481,18 @@ def main():
     images = extract_sku_images(PDUPDATES_PATH)
 
     print(f'[3/5] Building data blocks')
-    config = load_pd_config()
-    asi_set = set(config.get('after_sales_improvement', []))
-    mp_set = compute_mp_set(tracker_rows)
-    print(f'      ASI exclusion: {len(asi_set)} SKUs from config')
-    print(f'      MP/Released set: {len(mp_set)} SKUs from Tracker Current Status="MP"')
+    # config already loaded above (needed for sku_aliases in load_tracker)
+    # 5/19: ASI source of truth is Tracker col E (npd_asi field), not config.
+    # Blank col E = NPD by default; only 'ASI' marker excludes from Page 1.
+    asi_set = {r['sku'] for r in tracker_rows if (r.get('npd_asi') or '').strip().upper() == 'ASI'}
+    mp_set = compute_mp_set(tracker_rows, config)
+    print(f'      ASI exclusion: {len(asi_set)} SKUs from Tracker col E: {sorted(asi_set)}')
+    print(f'      MP/Released set: {len(mp_set)} SKUs (Tracker MP + config mp_overrides)')
     page1 = build_page1_data(pd_main, tracker_rows, white_list, asi_set, mp_set, images)
     placeholders = build_placeholder_cards(tracker_rows, pd_main, asi_set, mp_set, images)
     page1.extend(placeholders)
 
     # Merge small categories (< SMALL_CAT_THRESHOLD cards) into "Other".
-    # Threshold confirmed by Summer 2026-05-04: any bucket with < 3 cards
-    # collapses to keep Page 1 visually clean. Empty-category cards also fold
-    # into "Other" so they don't render as a no-name section.
     SMALL_CAT_THRESHOLD = 3
     from collections import Counter as _Counter
     cat_counts = _Counter(p.get('category', '') for p in page1)
@@ -1301,7 +1505,6 @@ def main():
     print(f'      page1Data: {len(page1)} cards (= {len(page1)-len(placeholders)} from PD Table + {len(placeholders)} placeholders; {moved} moved to "Other" from {len(small_cats)} small cats)')
     page3 = build_page3_data(tracker_rows, asi_set, set(pd_main.keys()), mp_set)
     print(f'      page3Data: {len(page3)} tracker rows')
-    # Pipeline split: -MX suffix → Mexico tab, all else → US tab.
     us_rows = [r for r in tracker_rows if not is_mx_sku(r.get('sku', ''))]
     mx_rows = [r for r in tracker_rows if is_mx_sku(r.get('sku', ''))]
     pipeline_us = build_pipeline_data(us_rows, asi_set)
@@ -1310,7 +1513,7 @@ def main():
     print(f'      pipelineMXData: counts={pipeline_mx["counts"]} (total={sum(pipeline_mx["counts"])})')
     stats = build_summary_stats(page1, tracker_rows, asi_set, mp_set, set(pd_main.keys()))
     print(f'      summaryStats: {stats}')
-    released = build_released_data(tracker_rows, mp_set)
+    released = build_released_data(tracker_rows, mp_set, pd_main)
     print(f'      releasedData: {len(released)} entries (Project Released dropdown)')
 
     banner = build_banner_html(tracker_rows, pd_main, asi_set, mp_set)
@@ -1319,12 +1522,10 @@ def main():
     else:
         print(f'[4/5] Banner OFF')
 
-    # 5a. Chinese version
     print(f'[5/5] Render + rotate (Chinese)')
     html_out = render_template(template, page1, pipeline_us, pipeline_mx, page3, stats, banner, released)
     write_with_rotation(html_out, OUT_PATH, PREV_PATH)
 
-    # 5b. English version
     print(f'[5/5] Render + rotate (English)')
     trans = load_translations()
     print(f'      translations loaded: {len(trans)} entries')
