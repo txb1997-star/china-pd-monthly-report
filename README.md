@@ -3,9 +3,8 @@
 Chefman 中国 PD 团队月度产品开发进度报表的构建系统与最新成品。
 
 **Live 地址:**
-- 默认(English): https://txb1997-star.github.io/china-pd-monthly-report/
-- 中文版: https://txb1997-star.github.io/china-pd-monthly-report/China_PD_Monthly_Report_Apr2026.html
-- English version: https://txb1997-star.github.io/china-pd-monthly-report/China_PD_Monthly_Report_Apr2026_EN.html
+- 默认(English, 永远是最新一期): https://txb1997-star.github.io/china-pd-monthly-report/
+- 当月单独文件: `.../China_PD_Monthly_Report_{Mon}{Year}.html`(中文) 和 `..._EN.html`(英文),如 `China_PD_Monthly_Report_Jun2026.html`。旧月份从 repo 移除,需要时在 git 历史里找。
 
 ---
 
@@ -45,7 +44,7 @@ Chefman 中国 PD 团队月度产品开发进度报表的构建系统与最新�
 ### 前置
 
 - Python 3.9+
-- 装依赖:`pip install openpyxl jinja2`
+- 装依赖:`pip install openpyxl pillow`(pillow 用于产品图抽取;不需要 jinja2,模板是自研占位符替换)
 - 数据源 xlsx(`China PD updates *.xlsx` 等)放在同目录下,**不会上 repo**
 
 ### 命令
@@ -80,7 +79,7 @@ git push
 
 **自动方式**
 
-双击同目录下的 `push_to_github.bat`,会自动 add + commit + push。
+双击同目录下的 `Push_NOW.bat`,会自动 add + commit + push。
 
 ---
 

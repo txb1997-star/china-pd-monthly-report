@@ -142,8 +142,9 @@ if !errorlevel! equ 0 (
 if "!FIRST_PUSH!"=="1" (
     set "COMMIT_MSG=Initial: build system + latest monthly report"
 ) else (
-    for /f "tokens=2 delims==" %%a in ('wmic os get LocalDateTime /value 2^>nul') do set "DT=%%a"
-    set "COMMIT_MSG=Update report - !DT:~0,4!-!DT:~4,2!-!DT:~6,2! !DT:~8,2!:!DT:~10,2!"
+    REM wmic 在 Win11 已废弃(取不到日期导致过去 commit message 乱码),改用 powershell
+    for /f "delims=" %%a in ('powershell -NoProfile -Command "Get-Date -Format \"yyyy-MM-dd HH:mm\""') do set "DT=%%a"
+    set "COMMIT_MSG=Update report - !DT!"
 )
 
 echo [COMMIT] !COMMIT_MSG!

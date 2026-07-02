@@ -35,6 +35,11 @@ import openpyxl
 from openpyxl.styles import Font, PatternFill, Alignment, Border, Side
 from openpyxl.utils import get_column_letter
 
+# Windows console defaults to cp1252 and chokes on Chinese/emoji output.
+for _stream in (sys.stdout, sys.stderr):
+    if hasattr(_stream, 'reconfigure'):
+        _stream.reconfigure(encoding='utf-8', errors='replace')
+
 # === Paths ===
 # Derive from this script's location so the file can move sessions / containers
 # without hardcoding session ids (Cowork rotates them every reboot).
@@ -47,7 +52,8 @@ if _HOME and "/sessions/" in _HOME:
     SCRATCH_OUT = Path(_HOME) / "mnt" / "outputs" / "Summers_Monthly_PD_Table.xlsx"
 else:
     UPLOADS_DIR = Path("/nonexistent-uploads")
-    SCRATCH_OUT = Path("/tmp/Summers_Monthly_PD_Table.xlsx")
+    import tempfile as _tempfile
+    SCRATCH_OUT = Path(_tempfile.gettempdir()) / "Summers_Monthly_PD_Table.xlsx"
 SCRATCH_OUT.parent.mkdir(parents=True, exist_ok=True)
 FINAL_OUT = PROJECT_DIR / "Summers_Monthly_PD_Table.xlsx"
 CONFIG_PATH = PROJECT_DIR / "pd_table_config.json"

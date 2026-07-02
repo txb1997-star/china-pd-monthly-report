@@ -1,29 +1,29 @@
 # Monthly PD Report — To Do List
 
-*最后更新：2026-05-19*
+*最后更新：2026-07-02*
 *关联文档：Monthly_PD_Project.md*
 
 ---
 
 ## 当前阶段
 
-HTML 已上线（4-21 胡总确认通过），数据更新 SOP 已跑通，PM 协同节奏稳定。5-19 这次月报更新覆盖了 Tracker 新加 NPD/ASI 列、Excel image-in-cell 解析、幽灵图过滤几项关键改造。
+工作流已迁至本机 Claude Code（2026-07-02），构建链路本地验证通过（Jun2026 双语 HTML、EN 0 warning）。数据源精简为两个（Project List 退役）。月报节奏稳定：每月 26 号 PM 确认 PD Table → 月初跑 rebuild + build → 双语出版。
 
 ---
 
 ## 立即（本周）
 
-- [ ] **EN 版 119 条新中文待翻译** — May 数据这次产 EN 时 build.py warn 出 119 条新中文卡点/Action。等 Summer 决定时机后对话里翻译追加 translations.json + 重跑 build
-- [ ] **追踪 PM 反馈** — Teams broadcast 已发，等 A 类 11 个 + B 类 8 个 SKU 回填 / 确认（Cottee 2 / Liz 10 / Rowling 7；Rowling RJ15-7-LL 系列命名一致性也待 Rowling 确认）
+- [ ] **追踪 PM 回填** — 6-30 Jun 报告中 A 段（Tracker 有、PD Table 缺商业信息）5 个 SKU 出 PENDING 占位卡，等 PM 补 PD updates 后消掉
+- [ ] **git commit + push 迁移改动** — build.py/rebuild_pdtable.py 本地化 + 文档更新还没进 git；push 前核实 claude_api_key.txt / 推送 Token 从未进过历史
 
 ## 紧接着
 
-- [ ] **HTML 改造（Summer 仍有多处想改）** — 单独梳理后再做，先稳数据源
+- [ ] **HTML 改造（Summer 仍有多处想改）** — 单独梳理后再做
+- [ ] **index.html 更新机制待定** — GitHub Pages 首页仍是 4 月 EN 版拷贝，build.py 不更新它；要么让 build 自动同步最新 EN 版，要么改成月份目录页（待 Summer 定）
 
 ## 中期
 
-- [ ] **联系 IT hosting 方案** — 让其他人通过 link 访问（CC 胡总）
-- [ ] **补齐剩余 placeholder SKU 商业数据** — 11 个 placeholder 卡片（A 类 PM 回填后会变成真卡）
+- [ ] **7 月月报周期** — 7/26 前 PM 确认 PD Table；7/10 后 build 自动切 Jul（MONTH 已自动化，无需改代码）
 
 ## 未来（月报跑通后再考虑）
 
@@ -33,28 +33,16 @@ HTML 已上线（4-21 胡总确认通过），数据更新 SOP 已跑通，PM �
 
 ---
 
-## 已完成（参考）
+## 已完成（近期，详细历史见 Monthly_PD_Project.md §11）
 
-### 上线 + 4 月基础
-- [x] HTML 三页结构上线（PD Table / Pipeline / Weekly Tracker）
-- [x] 顶栏 Stats Bar 5 卡片（Total / High Risk / Mid Risk / Tier 1 / Project Released）
-- [x] Risk Detail Panel（点 High/Mid Risk 展开 Tracker 风格表格）
-- [x] 4-21 胡总确认 HTML 形式
-- [x] CRD & Milestone 政策制定
-- [x] Milestone Change 填写 Guidance 发给 PM
-- [x] 三数据源结构确定（Tracker / PD Table / Project List）
-- [x] 数据更新流程 SOP（Monthly_PD_Project.md §5）
-- [x] 4-29 双语自动产出（CN + EN）+ Project List filter + Banner
-- [x] 4-30 产品渲染图自动抽取嵌入
-
-### 5 月改造
-- [x] 5-04 PD Table 纯镜像重建 + Stats Bar 重做 + Pipeline US/MX 拆 + Category 合并 + Placeholder 卡
-- [x] 5-07 Tracker 25 列适配（P/V 列）+ umbrella 字典彻底删 + MONTH_NAME → May
-- [x] 5-19 Tracker 26 列适配（NPD/ASI col E）
-- [x] 5-19 ASI 数据源切到 Tracker col E + 删 `pd_table_config.json` `after_sales_improvement` 字段
-- [x] 5-19 build.py 加 `_extract_image_in_cell_raw()` 支持 Excel 365 image-in-cell（rich-data 链路解析）
-- [x] 5-19 加 zero-area 幽灵图过滤（修 RJ44-CB 配错图 bug）
-- [x] 5-19 用 WK21 + May PD updates 跑出新 PD Table + HTML
+- [x] 7-02 迁移至 Claude Code：本地构建链路跑通、Pillow 安装、路径/编码修复
+- [x] 7-02 Project List 白名单退役（数据源三→二）、build.py 死代码清除
+- [x] 7-02 EN 版翻译补全（863 条，0 warning）—— 原"119 条待翻译"任务随各周构建陆续消化完毕
+- [x] 6-30 CRD Change 可点统计块上线（第 6 个 stat 方块 + 明细面板，review-gated crd_changes 配置）
+- [x] 6-30 风险明细面板加 PO/PA/6A 三列
+- [x] ~~联系 IT hosting~~ — 已用 GitHub Pages（月报）+ Azure Static Web App（看板）解决，不再找 IT
+- [x] 5-26 Page 1 Compare modal 上线
+- [x] 5-19 image-in-cell 支持 + 幽灵图过滤 + ASI 切 Tracker col E
 
 ---
 

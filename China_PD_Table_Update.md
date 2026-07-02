@@ -268,6 +268,12 @@ PD Table SKUs ≡ Tracker SKUs，差异分三段：
 
 **Banner 触发：** 上面 A 段如果某 PM ≥ 3 个 SKU 缺失，HTML build 时 banner 自动显示该 PM 负责的 category 列表（详见 `Monthly_PD_Project.md` §6 Banner 规则）。
 
+**对账规则（6-15 Summer 定，A/B 两段的处置口径）：**
+
+- **B 段（PD updates 有、Tracker 没有）= 可接受，不报警。** 直接在 card 页显示商业信息即可，不要求 PM 把它放进 Weekly Tracker，也不需要加 `sku_aliases` 强行映射。PD updates 端可以比 Tracker 多（如新一代 V2、color variant、PD 先行的新品）。
+- **A 段（Tracker 有、且"未 MP"也"不是 ASI"、但 PD updates 没有）= 必须报警。** 这类才是真正的缺口（PM 在 Tracker 立了项却没在 PD updates 补商业信息）→ 渲染为 PENDING 占位卡片 + 触发 banner。
+- 一句话：**方向性不对称** —— 多在 PD updates 这边无所谓，缺在 PD updates 这边（而 Tracker 有进行中的非 ASI 项目）才要喊。
+
 ---
 
 ## 7. PM 沟通模板

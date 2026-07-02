@@ -29,6 +29,11 @@ from pathlib import Path
 
 import openpyxl as ox
 
+# Windows console defaults to cp1252 and chokes on Chinese/emoji output.
+for _stream in (sys.stdout, sys.stderr):
+    if hasattr(_stream, 'reconfigure'):
+        _stream.reconfigure(encoding='utf-8', errors='replace')
+
 # -------------------------------------------------------------
 # Paths — derive from __file__ so the script is session-id independent.
 # This file lives at <BASE>/Monthly PD Report/build.py, so BASE is two levels up.
@@ -82,7 +87,9 @@ def _find_latest_tracker():
 
 TRACKER_PATH = _find_latest_tracker()
 PDTABLE_PATH = MONTHLY_DIR / 'Summers_Monthly_PD_Table.xlsx'
-PROJLIST_PATH = MONTHLY_DIR / 'Project list.xlsx'
+
+# Project List retired 2026-07-02: the HTML "For Sales / All" filter was removed,
+# so the white-list xlsx is no longer a data source.
 # Source of embedded product images. Auto-detect the latest 'China PD updates *.xlsx'
 # in MONTHLY_DIR by mtime, so Summer can drop in next month's file (e.g. 'China PD
 # updates May 2026.xlsx') without editing build.py.
@@ -108,11 +115,27 @@ TRANSLATIONS_PATH = MONTHLY_DIR / 'translations.json'
 
 # Output naming: month abbreviation + 4-digit year
 NOW = datetime.now()
-MONTH_NAME = NOW.strftime('%b')   # 'Apr'
-YEAR = NOW.strftime('%Y')          # '2026'
-# Override for current build (data is May 2026)
-MONTH_NAME = 'May'
-YEAR = '2026'
+# Report period auto-detection (Summer rule 2026-06-02): the report rolls to
+# month M on the 10th of M.  day >= 10 -> current month; day < 10 -> previous
+# month (crossing the year boundary in January).
+import calendar as _calendar
+if NOW.day >= 10:
+    _pm, _py = NOW.month, NOW.year
+elif NOW.month == 1:
+    _pm, _py = 12, NOW.year - 1
+else:
+    _pm, _py = NOW.month - 1, NOW.year
+MONTH_NAME = _calendar.month_abbr[_pm]   # 'May','Jun','Jul' (filenames)
+MONTH_FULL = _calendar.month_name[_pm]   # 'May','June','July' (display title)
+YEAR = str(_py)
+REPORT_PERIOD = f'{MONTH_FULL} {YEAR}'   # e.g. 'June 2026'
+
+# Data cutoff (Summer rule 2026-06-09): data validity is generally through
+# last Friday. Compute the most recent Friday on/before the build date.
+from datetime import timedelta as _timedelta
+_asof = NOW - _timedelta(days=(NOW.weekday() - 4) % 7)   # weekday: Fri=4
+DATA_ASOF_CN = f'数据截至 {_asof.year}年{_asof.month}月{_asof.day}日（上周五）'
+DATA_ASOF_EN = f'Data as of {_calendar.month_abbr[_asof.month]} {_asof.day}, {_asof.year}'
 
 OUT_NAME = f'China_PD_Monthly_Report_{MONTH_NAME}{YEAR}.html'
 OUT_PATH = MONTHLY_DIR / OUT_NAME
@@ -124,8 +147,10 @@ OUT_PATH_EN = MONTHLY_DIR / OUT_NAME_EN
 PREV_PATH_EN = MONTHLY_DIR / f'China_PD_Monthly_Report_{MONTH_NAME}{YEAR}_EN_prev.html'
 
 # Scratchpad for safe-write (avoids OneDrive zip-truncation issue).
-# Use the env var so it follows the current session automatically.
-SCRATCH = Path(os.environ.get('CLAUDE_SCRATCH', '/tmp/pd_report_scratch'))
+# Use the env var so it follows the current session automatically; outside the
+# sandbox (e.g. local Windows) fall back to the OS temp dir.
+import tempfile as _tempfile
+SCRATCH = Path(os.environ.get('CLAUDE_SCRATCH') or Path(_tempfile.gettempdir()) / 'pd_report_scratch')
 SCRATCH.mkdir(parents=True, exist_ok=True)
 
 # -------------------------------------------------------------
@@ -292,17 +317,48 @@ def load_tracker(path, sku_aliases=None):
     current_section = ''
     aliases = sku_aliases or {}
 
-    # Tracker stage cols: P=16 … Z=26 after 5/19 NPD/ASI col insert
-    stage_label_map = {
-        16: 'Kick off', 17: 'Detail Design', 18: 'Prototype',
-        19: 'Tooling', 20: 'FOT', 21: 'EB',
-        22: 'Culinary EB', 23: 'Culinary Claims',
-        24: 'PP', 25: 'Culinary PP', 26: 'MP',
-    }
+    # 6/15: resolve columns by HEADER (row 1), not fixed index. A '6A' column was
+    # inserted at N (col 14) on 6/15, shifting PO/CRD/stages one column right.
+    # Header lookup makes load_tracker robust to future column inserts; falls back
+    # to fixed indices when a header is missing (older trackers).
+    import re as _re
+    def _norm_h(s):
+        return _re.sub(r'\s+', ' ', str(s or '').strip()).lower()
+    hdr = {}
+    for _c in range(1, ws.max_column + 1):
+        _h = _norm_h(ws.cell(1, _c).value)
+        if _h and _h not in hdr:
+            hdr[_h] = _c
+    def _col(default, *names):
+        for n in names:
+            c = hdr.get(_norm_h(n))
+            if c:
+                return c
+        return default
+    COL_CAT     = _col(2,  '品类')
+    COL_PV      = _col(3,  'P/V')
+    COL_SKU     = _col(4,  'SKU')
+    COL_NPD     = _col(5,  'NPD/ASI')
+    COL_RISK    = _col(6,  '风险')
+    COL_PM      = _col(7,  'PM')
+    COL_TIER    = _col(8,  'Tier')
+    COL_LASTUPD = _col(9,  '上次更新')
+    COL_STATUS  = _col(10, 'Current Status')
+    COL_ISSUE   = _col(11, '卡点 / 风险', '卡点/风险')
+    COL_NEXT    = _col(12, '下一步 Action', '下一步Action')
+    COL_PA      = _col(13, 'PA状态')
+    COL_6A      = _col(0,  '6A')   # 0 = not present (older trackers)
+    COL_PO      = _col(15, 'PO/订单状态')
+    COL_CRD     = _col(16, 'CRD')
+
+    # Stage columns (Kick off…MP) removed from Tracker 2026-07-01. HTML never
+    # rendered them (front-end has no per-SKU stage timeline; Page 2 buckets by
+    # 'Current Status'). Kept empty for downstream compatibility.
+    stage_label_map = {}
 
     for r in range(2, ws.max_row + 1):
         c1 = ws.cell(r, 1).value     # #
-        c4 = ws.cell(r, 4).value     # SKU (was c3 pre-5/6)
+        c4 = ws.cell(r, COL_SKU).value     # SKU (header-resolved)
         c1s = cellstr(c1)
         c4s = cellstr(c4)
 
@@ -330,19 +386,20 @@ def load_tracker(path, sku_aliases=None):
             'num': cellstr(c1),
             'sku': sku,
             'sku_raw': c4s,
-            'pv': cellstr(ws.cell(r, 3).value),         # 'Parent' / 'Variant' / ''
-            'category': cellstr(ws.cell(r, 2).value),
-            'npd_asi': cellstr(ws.cell(r, 5).value),    # 5/19: new E col, 'ASI' or '' (blank = NPD)
-            'risk': cellstr(ws.cell(r, 6).value),       # was 5, shifted by E=NPD/ASI insert 5/19
-            'pm': cellstr(ws.cell(r, 7).value),         # was 6
-            'tier': cellstr(ws.cell(r, 8).value),       # was 7
-            'last_update': cellstr(ws.cell(r, 9).value),# was 8
-            'current_status': clean_status(ws.cell(r, 10).value),  # was 9
-            'issue': cellstr(ws.cell(r, 11).value),     # was 10
-            'next_action': cellstr(ws.cell(r, 12).value),# was 11
-            'pa_status': cellstr(ws.cell(r, 13).value), # was 12
-            'po_status': cellstr(ws.cell(r, 14).value), # was 13
-            'crd': cellstr(ws.cell(r, 15).value),       # was 14
+            'pv': cellstr(ws.cell(r, COL_PV).value),         # 'Parent' / 'Variant' / ''
+            'category': cellstr(ws.cell(r, COL_CAT).value),
+            'npd_asi': cellstr(ws.cell(r, COL_NPD).value),    # 'ASI' or '' (blank = NPD)
+            'risk': cellstr(ws.cell(r, COL_RISK).value),
+            'pm': cellstr(ws.cell(r, COL_PM).value),
+            'tier': cellstr(ws.cell(r, COL_TIER).value),
+            'last_update': cellstr(ws.cell(r, COL_LASTUPD).value),
+            'current_status': clean_status(ws.cell(r, COL_STATUS).value),
+            'issue': cellstr(ws.cell(r, COL_ISSUE).value),
+            'next_action': cellstr(ws.cell(r, COL_NEXT).value),
+            'pa_status': ('Done' if cellstr(ws.cell(r, COL_PA).value).strip().lower() == 'yes' else cellstr(ws.cell(r, COL_PA).value)),  # 6/15: report treats non-standard 'Yes' as Done (Summer)
+            'six_a': cellstr(ws.cell(r, COL_6A).value) if COL_6A else '',  # 6/15 new col
+            'po_status': cellstr(ws.cell(r, COL_PO).value),
+            'crd': cellstr(ws.cell(r, COL_CRD).value),
             'stages': stages,
             'pm_section': current_section,
         })
@@ -421,32 +478,6 @@ def load_pd_table(path):
         main_skus[sku] = record
 
     return main_skus, pending
-
-
-def load_project_list(path):
-    """Load Project list, China Projects sheet only. Returns set of SKUs (white-list)."""
-    if not path.exists():
-        raise FileNotFoundError(f'Project list not found: {path}')
-
-    wb = ox.load_workbook(path, data_only=True)
-    ws = wb['China Projects']
-
-    skus = set()
-    # Header at R7, data from R8. SKU column is C4 ('Model').
-    for r in range(8, ws.max_row + 1):
-        v = ws.cell(r, 4).value
-        if not v:
-            continue
-        s = str(v)
-        # Cells may have multi-line SKUs
-        for piece in s.split('\n'):
-            sku = normalize_sku(piece)
-            if not sku:
-                continue
-            # Filter obviously non-SKU strings
-            if sku.startswith(('RJ', 'C5', 'C6', 'C4', 'BF', 'GR')):
-                skus.add(sku)
-    return skus
 
 
 # -------------------------------------------------------------
@@ -841,7 +872,7 @@ def compute_mp_set(tracker_rows, config=None):
     return base | overrides
 
 
-def build_page1_data(pd_main, tracker_rows, white_list, asi_set, mp_set, images=None):
+def build_page1_data(pd_main, tracker_rows, asi_set, mp_set, images=None):
     """Page 1 = product cards. Driven by PD Table main rows.
 
     Joins each PD Table SKU with Tracker (for status/risk/crd/pm) by exact match.
@@ -898,6 +929,16 @@ def build_page1_data(pd_main, tracker_rows, white_list, asi_set, mp_set, images=
                 'msrp': rec.get('msrp', ''),
                 'sampleETA': rec.get('sample_eta', ''),
                 'poPlaced': rec.get('po_placed', ''),
+                # PO status for Page 1 filter/badge/detail now reads the
+                # Weekly Tracker PO/订单状态 col (col N) via parse_po — same
+                # source as Page 3. PD Table 'PO Placed?' (po_placed) is
+                # mostly empty/stale, so the homepage PO filter must use
+                # the Tracker. (2026-06-01 fix)
+                # Page 1 homepage is 2-state: INTENT collapses into No PO
+                # (only confirmed PO = PO Placed). Page 3 keeps INTENT distinct.
+                'poStatus': ('NO' if parse_po(tr['po_status'])[0] == 'INTENT'
+                             else parse_po(tr['po_status'])[0]) if tr else '',
+                'poBuyer': parse_po(tr['po_status'])[1] if tr else '',
                 'estInspection': rec.get('est_inspection', ''),
                 'factory': rec.get('factory', ''),
                 'market': rec.get('market', ''),
@@ -916,7 +957,6 @@ def build_page1_data(pd_main, tracker_rows, white_list, asi_set, mp_set, images=
                 'crd': tr['crd'] if tr else '',
                 'pm': tr['pm'] if tr else '',
                 'pv': tr.get('pv', '') if tr else '',
-                'onProjectList': sku in white_list,
                 # Embedded base64 thumbnail (empty falls back to placeholder
                 # icon in template). _sku_image_aliases() handles parenthetical
                 # color codes — e.g. images['RJ50-SFDAF-25D'] aliases to
@@ -1003,8 +1043,10 @@ def build_page3_data(tracker_rows, asi_set=None, pd_main_skus=None, mp_set=None)
             'pmSection': row['pm_section'],
             'stages': row['stages'],
             'paStatus': row.get('pa_status', ''),  # 5/12: PA (Product Authorization) signed status
+            'sixA': row.get('six_a', ''),  # 6/15: 6A (Amazon SIOC packaging cert) status
             'poStatus': po_status,
             'poBuyer': po_buyer,
+            'poBuyers': parse_po_buyers(row['po_status'])[1],  # per-buyer rows for Page 3 PO cell
             'poRaw': row['po_status'],  # preserved for hover/tooltip if needed
             'isASI': row['sku'] in asi_set,
             'inPdTable': row['sku'] in pd_main_skus,
@@ -1047,6 +1089,8 @@ def build_pipeline_data(tracker_rows, asi_set=None):
             'action': row['next_action'],
             'poStatus': po_status,
             'poBuyer': po_buyer,
+            'paStatus': row.get('pa_status', ''),
+            'sixA': row.get('six_a', ''),
             'isASI': row['sku'] in asi_set,
         })
 
@@ -1183,6 +1227,10 @@ PO_NEGATIVE_PHRASES = [
     '暂无订单', '无Open PO', '无open PO', '无PO', '无 PO',
     '项目Pending,无Open PO', '项目取消',
 ]
+# 2026-06-01 (Summer rule): intent / inquiry / not-yet-placed are NOT a placed
+# PO. They get a distinct 'INTENT' status so Page 3 shows three buckets
+# (无PO / XX意向 / XX已PO). Page 1 homepage collapses INTENT into No PO.
+PO_INTENT_PHRASES = ['意向', '询单', '即将']
 # Known buyer keywords. ORDER MATTERS — longer multi-word names listed first
 # so "Canadian Tire" matches before "Canadian", "Walmart 3P" can be normalized
 # to "Walmart" by listing "Walmart" alone (after multi-word variants).
@@ -1228,11 +1276,11 @@ RISK_ZH_TO_EN = {'高': 'High', '中': 'Medium', '低': 'Low', '—': '—'}
 
 
 def translate_page1(items, trans_dict):
-    """Translate page1 cards. Fields with potential Chinese: currentStatus, category, crd."""
+    """Translate page1 cards. Fields with potential Chinese: currentStatus, category, crd, issue, nextAction (placeholder cards carry tracker issue/nextAction, shown in card detail + risk table)."""
     out = []
     for p in items:
         new_p = dict(p)
-        for key in ['currentStatus', 'category', 'crd']:
+        for key in ['currentStatus', 'category', 'crd', 'issue', 'nextAction']:
             if p.get(key):
                 new_p[key] = translate(p[key], trans_dict)
         out.append(new_p)
@@ -1244,7 +1292,7 @@ def translate_page3(items, trans_dict):
     out = []
     for p in items:
         new_p = dict(p)
-        for key in ['issue', 'nextAction', 'currentStatus', 'category', 'poRaw', 'crd', 'paStatus']:
+        for key in ['issue', 'nextAction', 'currentStatus', 'category', 'poRaw', 'crd', 'paStatus', 'sixA']:
             if p.get(key):
                 new_p[key] = translate(p[key], trans_dict)
         out.append(new_p)
@@ -1266,6 +1314,10 @@ def translate_pipeline(pipe, trans_dict):
                 np['action'] = translate(proj['action'], trans_dict)
             if proj.get('category'):
                 np['category'] = translate(proj['category'], trans_dict)
+            if proj.get('paStatus'):
+                np['paStatus'] = translate(proj['paStatus'], trans_dict)
+            if proj.get('sixA'):
+                np['sixA'] = translate(proj['sixA'], trans_dict)
             new_stage.append(np)
         new_pipe['projects'].append(new_stage)
     return new_pipe
@@ -1278,22 +1330,23 @@ def report_untranslated(items_p1, items_p3, items_pipe, trans_dict):
     untrans = set()
     # page1
     for p in items_p1:
-        for k in ['currentStatus', 'category', 'description', 'topFeature', 'crd']:
+        for k in ['currentStatus', 'category', 'description', 'topFeature', 'crd', 'issue', 'nextAction']:
             v = p.get(k, '')
             if v and zh_pat.search(str(v)) and v not in trans_dict:
                 untrans.add(v)
     # page3
     for p in items_p3:
-        for k in ['issue', 'nextAction', 'currentStatus', 'category', 'poRaw', 'crd', 'paStatus']:
+        for k in ['issue', 'nextAction', 'currentStatus', 'category', 'poRaw', 'crd', 'paStatus', 'sixA']:
             v = p.get(k, '')
             if v and zh_pat.search(str(v)) and v not in trans_dict:
                 untrans.add(v)
     # pipeline
     for stage in items_pipe['projects']:
         for p in stage:
-            v = p.get('action', '')
-            if v and zh_pat.search(str(v)) and v not in trans_dict:
-                untrans.add(v)
+            for kk in ('action', 'category', 'paStatus', 'sixA'):
+                v = p.get(kk, '')
+                if v and zh_pat.search(str(v)) and v not in trans_dict:
+                    untrans.add(v)
     return untrans
 
 
@@ -1301,8 +1354,8 @@ def parse_po(po_status_text):
     """Parse Tracker PO/订单状态 text → (status, buyer).
 
     Returns:
-      status: 'YES' | 'NO' | ''   (placed / not placed / unknown)
-      buyer:  string or ''        (extracted customer/channel name; '' if no PO or unknown)
+      status: 'YES' | 'INTENT' | 'NO' | ''  (placed / intent-only / no PO / unknown)
+      buyer:  string or ''        (extracted customer/channel name)
     """
     if not po_status_text:
         return '', ''
@@ -1312,21 +1365,61 @@ def parse_po(po_status_text):
     # Negative phrases → No PO
     if any(neg in text for neg in PO_NEGATIVE_PHRASES):
         return 'NO', ''
-    # Try buyer extraction
+    # Extract buyer / channel name (used by both INTENT and YES)
     buyer = ''
     for kw in PO_BUYER_KEYWORDS:
         if kw in text:
             buyer = kw
             break
-    # If we found a buyer keyword, it's a placed PO
-    if buyer:
-        return 'YES', buyer
-    # Otherwise fallback: contains "for X" pattern → placed, buyer = X
-    m = re.search(r'\bfor\s+([A-Z][A-Za-z\']+)', text)
-    if m:
-        return 'YES', m.group(1)
-    # Has substantive text but no recognized pattern → still PO-placed (e.g., "Kohl's紧急订单")
-    return 'YES', ''
+    if not buyer:
+        m = re.search(r'\bfor\s+([A-Z][A-Za-z\']+)', text)
+        if m:
+            buyer = m.group(1)
+    # Intent / inquiry / about-to-place → INTENT (not a placed PO). Surfaced as
+    # its own bucket on Page 3 (XX意向); Page 1 collapses it into No PO.
+    if any(ph in text for ph in PO_INTENT_PHRASES):
+        return 'INTENT', buyer
+    # Confirmed PO: buyer keyword, "for X", or other substantive text
+    # (e.g. '已下PO', bare channel name) → placed.
+    return 'YES', buyer
+
+
+def parse_po_buyers(po_status_text):
+    """Parse Tracker PO text into per-buyer rows for the Page 3 PO cell.
+
+    Splits the free-text on ; ； , separators and, for each segment, derives a
+    status (YES/INTENT) and the buyer name (segment text minus PO-status tokens).
+    Captures buyers not in PO_BUYER_KEYWORDS (e.g. Meijer, Amazon CA).
+
+    Returns (overall_status, buyers_list) where buyers_list is a list of
+    {'buyer': str, 'status': 'YES'|'INTENT'}. Returns (overall, []) when the
+    overall status is NO / unknown, so single-buyer and No-PO rows render exactly
+    as before via the poBadge fallback.
+    """
+    overall = parse_po(po_status_text)[0]
+    if overall not in ('YES', 'INTENT'):
+        return overall, []
+    strip_tokens = ['已下单', '已下PO', '已PO', '下PO', '有Open PO', '有open PO',
+                    '有PO', '意向', '询单', '即将', '订单', 'PO', '已下']
+    buyers = []
+    seen = set()
+    for seg in re.split(r'[;；,，]', po_status_text):
+        seg = seg.strip()
+        if not seg:
+            continue
+        if any(neg in seg for neg in PO_NEGATIVE_PHRASES):
+            continue  # skip pure "no PO" fragments
+        st = 'INTENT' if any(ph in seg for ph in PO_INTENT_PHRASES) else 'YES'
+        buyer = seg
+        for tok in strip_tokens:
+            buyer = buyer.replace(tok, '')
+        buyer = buyer.strip(' :：-—_/、()（）')
+        key = (buyer, st)
+        if key in seen:
+            continue
+        seen.add(key)
+        buyers.append({'buyer': buyer, 'status': st})
+    return overall, buyers
 
 
 # Map each PM section header → the English category names Sales would recognize.
@@ -1409,16 +1502,28 @@ def build_banner_html(tracker_rows, pd_main, asi_set, mp_set):
 # -------------------------------------------------------------
 # Render & rotate
 # -------------------------------------------------------------
-def render_template(template_text, page1, pipeline_us, pipeline_mx, page3, stats, banner, released):
+def render_template(template_text, page1, pipeline_us, pipeline_mx, page3, stats, banner, released, po_labels=None, pa_labels=None, sixa_labels=None, data_asof='', crd_changes=None):
     """Substitute placeholders with JSON / HTML."""
+    if po_labels is None:
+        po_labels = {'placed': 'PO Placed', 'intent': 'Intent', 'noPO': 'No PO'}
+    if pa_labels is None:
+        pa_labels = {'no': 'No', 'ongoing': 'Ongoing', 'waiting': 'Waiting for Signing', 'done': 'Done'}
+    if sixa_labels is None:
+        sixa_labels = {'no': 'No', 'ongoing': 'Ongoing', 'done': 'Done', 'na': 'Not Needed'}
     out = template_text
+    out = out.replace('{{DATA_ASOF}}', data_asof)
+    out = out.replace('{{PO_LABELS}}', json.dumps(po_labels, ensure_ascii=False))
+    out = out.replace('{{PA_LABELS}}', json.dumps(pa_labels, ensure_ascii=False))
+    out = out.replace('{{SIXA_LABELS}}', json.dumps(sixa_labels, ensure_ascii=False))
     out = out.replace('{{PAGE1_DATA}}', json.dumps(page1, ensure_ascii=False))
     out = out.replace('{{PIPELINE_US_DATA}}', json.dumps(pipeline_us, ensure_ascii=False))
     out = out.replace('{{PIPELINE_MX_DATA}}', json.dumps(pipeline_mx, ensure_ascii=False))
     out = out.replace('{{PAGE3_DATA}}', json.dumps(page3, ensure_ascii=False))
     out = out.replace('{{SUMMARY_STATS}}', json.dumps(stats, ensure_ascii=False))
     out = out.replace('{{RELEASED_DATA}}', json.dumps(released, ensure_ascii=False))
+    out = out.replace('{{CRD_CHANGE_DATA}}', json.dumps(crd_changes or [], ensure_ascii=False))
     out = out.replace('{{BANNER_BLOCK}}', banner)
+    out = out.replace('{{REPORT_PERIOD}}', REPORT_PERIOD)
     # Sanity: no placeholders should remain
     leftover = re.findall(r'\{\{[A-Z_]+\}\}', out)
     if leftover:
@@ -1470,10 +1575,6 @@ def main():
     pd_main, pd_pending = load_pd_table(PDTABLE_PATH)
     print(f'                  -> {len(pd_main)} main SKUs, {len(pd_pending)} pending')
 
-    print(f'      proj list:  {PROJLIST_PATH.name} (China Projects sheet)')
-    white_list = load_project_list(PROJLIST_PATH)
-    print(f'                  -> {len(white_list)} white-list SKUs')
-
     if PDUPDATES_PATH:
         print(f'      pd updates: {PDUPDATES_PATH.name} (extracting product images)')
     else:
@@ -1488,7 +1589,7 @@ def main():
     mp_set = compute_mp_set(tracker_rows, config)
     print(f'      ASI exclusion: {len(asi_set)} SKUs from Tracker col E: {sorted(asi_set)}')
     print(f'      MP/Released set: {len(mp_set)} SKUs (Tracker MP + config mp_overrides)')
-    page1 = build_page1_data(pd_main, tracker_rows, white_list, asi_set, mp_set, images)
+    page1 = build_page1_data(pd_main, tracker_rows, asi_set, mp_set, images)
     placeholders = build_placeholder_cards(tracker_rows, pd_main, asi_set, mp_set, images)
     page1.extend(placeholders)
 
@@ -1512,6 +1613,9 @@ def main():
     print(f'      pipelineUSData: counts={pipeline_us["counts"]} (total={sum(pipeline_us["counts"])})')
     print(f'      pipelineMXData: counts={pipeline_mx["counts"]} (total={sum(pipeline_mx["counts"])})')
     stats = build_summary_stats(page1, tracker_rows, asi_set, mp_set, set(pd_main.keys()))
+    crd_changes = config.get('crd_changes', [])
+    stats['crd'] = len(crd_changes)
+    crd_changes_en = [dict(e, reason=e.get('reasonEN', e.get('reason',''))) for e in crd_changes]
     print(f'      summaryStats: {stats}')
     released = build_released_data(tracker_rows, mp_set, pd_main)
     print(f'      releasedData: {len(released)} entries (Project Released dropdown)')
@@ -1523,7 +1627,7 @@ def main():
         print(f'[4/5] Banner OFF')
 
     print(f'[5/5] Render + rotate (Chinese)')
-    html_out = render_template(template, page1, pipeline_us, pipeline_mx, page3, stats, banner, released)
+    html_out = render_template(template, page1, pipeline_us, pipeline_mx, page3, stats, banner, released, po_labels={'placed': '已PO', 'intent': '意向', 'noPO': '无PO'}, pa_labels={'no': '未申请', 'ongoing': '申请中', 'waiting': '待批复', 'done': '已完成'}, sixa_labels={'no': '未申请', 'ongoing': '申请中', 'done': '已完成', 'na': '无需'}, data_asof=DATA_ASOF_CN, crd_changes=crd_changes)
     write_with_rotation(html_out, OUT_PATH, PREV_PATH)
 
     print(f'[5/5] Render + rotate (English)')
@@ -1545,8 +1649,14 @@ def main():
     else:
         print(f'      OK all Chinese strings translated')
 
-    html_out_en = render_template(template, page1_en, pipeline_us_en, pipeline_mx_en, page3_en, stats, banner, released)
+    html_out_en = render_template(template, page1_en, pipeline_us_en, pipeline_mx_en, page3_en, stats, banner, released, po_labels={'placed': 'PO Placed', 'intent': 'Intent', 'noPO': 'No PO'}, pa_labels={'no': 'No', 'ongoing': 'Ongoing', 'waiting': 'Waiting for Signing', 'done': 'Done'}, sixa_labels={'no': 'No', 'ongoing': 'Ongoing', 'done': 'Done', 'na': 'Not Needed'}, data_asof=DATA_ASOF_EN, crd_changes=crd_changes_en)
     write_with_rotation(html_out_en, OUT_PATH_EN, PREV_PATH_EN)
+
+    # GitHub Pages 首页跟随最新 EN 版（2026-07-02 加；Push_NOW.bat 的同名逻辑保留作双保险）
+    index_path = MONTHLY_DIR / 'index.html'
+    index_path.write_text(html_out_en, encoding='utf-8')
+    print(f'  index.html synced to latest EN report')
+
     print('Done.')
 
 

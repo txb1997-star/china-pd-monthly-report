@@ -42,4 +42,19 @@ desktop.ini
 .vscode/
 .idea/
 
+# ---- 推送 token / 凭证(绝对不能上 public repo,2026-06-01 补)----
+*Token.txt
+*token.txt
+*.token
+PMO HTML*.txt
+
+# ---- 数据源 xlsx: 带日期后缀的也要排除(2026-06-01 补)----
+Project list*.xlsx
+
+# ---- 兜底: 所有 xlsx 都是内部数据,一律不上 repo(2026-07-02 补)----
+*.xlsx
+
+# ---- 本地历史归档不上 repo(旧报告在 git 历史里都有,2026-07-02 补)----
+Archive/
+
 # ---- 其它(以后想排除的随手加这里)----
