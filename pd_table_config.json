@@ -4,14 +4,16 @@
   "sku_aliases": {
     "RJ38-G4-AS": "RJ38-G4-LS",
     "RJ38-9TW-V3": "RJ38-9TW-V2",
-    "RJ56-DIS-V2-CA-CO": "RJ56-DIS-V2"
+    "RJ56-DIS-V2-CA-CO": "RJ56-DIS-V2",
+    "TM103": "RJ50-SS-M11"
   },
   "_mp_overrides_note": "PD Table SKUs to force-treat as MP (Project Released) so they're excluded from page1 cards. Use when PM split a multi-color umbrella in PD updates but Tracker collapses to one MP row. 5/12: RJ64-10 new colors (Tracker 'RJ64-10-new colors' MP covers 4 PD Table color SKUs).",
   "mp_overrides": [
     "RJ64-10-V2-PTC",
     "RJ64-10-V2-BTR",
     "RJ64-10-V2-AQU",
-    "RJ64-10-V2-LVD"
+    "RJ64-10-V2-LVD",
+    "RJ07-32-SS-D-CA"
   ],
   "_manual_additions_note": "Use only when a project is genuinely missing from PD updates xlsx. Format: [{\"_note\":\"...\",\"skus\":[...],\"pm\":\"...\",\"fields\":{...}}]",
   "manual_additions": [

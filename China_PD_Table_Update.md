@@ -1,6 +1,6 @@
 # China PD Table 更新流程
 
-*最后更新：2026-05-19（ASI 数据源切到 Tracker col E）*
+*最后更新：2026-07-04（审计整改：§5.3 Cowork 双跳流程标历史、§7.2 提醒模板删 Project List；此前 2026-05-19 ASI 数据源切到 Tracker col E）*
 *负责人：Summer Tan (PMO)*
 *关联文档：Monthly_PD_Project.md §5.2 / §5.2.1 / §5.2.2*
 
@@ -217,21 +217,11 @@ for sheet_name in wb.sheetnames:
 1. **方案 A（推荐）：** 创建全新 Workbook，从零写入所有数据和样式，不继承 Draft 的合并单元格
 2. **方案 B：** 如果要基于 Draft 修改，先 `ws.unmerge_cells()` 解除所有合并，操作完再重新合并
 
-### 5.3 文件损坏预防
+### 5.3 文件损坏预防（2026-07-04 更新：Cowork 时代的坑已消失）
 
-**已知坑：** 直接写入 OneDrive 挂载路径可能导致文件截断（zip EOCD 丢失），表现为 `BadZipFile: File is not a zip file`。
+**历史坑（Cowork 沙箱专属，2026-07-02 迁本地后不再适用）：** 沙箱直接写 OneDrive 挂载路径可能截断文件（zip EOCD 丢失 → `BadZipFile`），当时靠"先写 `/sessions/.../mnt/outputs/` 再 shutil.copy 回工作目录"的双跳规避。
 
-**正确流程：**
-```python
-# 1. 先存到 outputs 目录
-wb.save("/sessions/.../mnt/outputs/FINAL_new.xlsx")
-
-# 2. 用 shutil.copy 复制到工作目录
-shutil.copy(
-    "/sessions/.../mnt/outputs/FINAL_new.xlsx",
-    "/sessions/.../mnt/PMO General Email Tracking/Monthly PD Report/Summers_Monthly_PD_Table_FINAL.xlsx"
-)
-```
+**现行做法（本机）：** 先写系统临时目录（`tempfile.gettempdir()` 下的 scratch）再 copy 到工作目录——rebuild_pdtable.py / build.py 已内置，无需手动操作。写完 reload 验证能正常打开即可。
 
 ### 5.4 格式保护
 
@@ -306,15 +296,15 @@ deadline: 本周五下班前
 ```
 Hi 各位 PM，
 
-提醒一下，每月 26 号前请确认以下两个文件已更新到最新：
+提醒一下，每月 26 号前请确认 China PD updates 已更新到最新——
+所有在研项目的商业信息（Description、Features、Cost 等）。
 
-1. China PD updates — 所有在研项目的商业信息（Description、Features、Cost 等）
-2. Project List — China Projects sheet 的项目清单
-
-特别注意：PD Table 和 Project List 里的 SKU 请与 Weekly Tracker 保持一致。
+特别注意：PD updates 里的 SKU 请与 Weekly Tracker 保持一致。
 
 谢谢配合！
 ```
+
+> （2026-07-04 改：原模板第 2 条"Project List"已随其 2026-07-02 退役删除。）
 
 ---
 
@@ -386,6 +376,7 @@ Row Y+: SKU 写法不一致需 PM 确认的行（黄底）
     - 自动比对 Tracker，输出 A/B/C 三段 diff
 4. ☐ Summer 看 diff → 决定是否需要给 PM 发邮件 broadcast（用 §7.1 模板）
 5. ☐ 旧版 PD Table 自动备份到 `Archive/`（Claude 在脚本运行前完成）
+   > ⚠️ 2026-07-04 审计发现：06-30 那次重建漏了这一步（Archive 最新备份停在 06-23，旧版已不可追）。此步骤是硬步骤，下次重建必须执行。
 
 **完成判定：** 新 `Summers_Monthly_PD_Table.xlsx` 已写入 + diff 已展示 + Summer 看过觉得 OK。**不再需要 PM 单独确认才能转正**——PD Table 就是 PD updates 的直接镜像。
 

@@ -1,6 +1,6 @@
 # Monthly PD Report Project
 
-*最后更新：2026-07-02（迁移至 Claude Code + Project List 退役，详见 §11 变更记录）*
+*最后更新：2026-07-04（全文一致性清理：清 Cowork 时代残留 + 列数矛盾 + 过时快照，详见 §11 变更记录）*
 *负责人：Summer Tan (PMO)*
 *状态：HTML 已上线（4-21 胡总确认），构建系统重构完成（template + build.py + translations.json），中英双版自动产出。5-04 大改：纯镜像 PD Table 重建 + Stats Bar 重做 + Pipeline US/MX 拆分 + ASI/NPD filter + Placeholder 占位卡片 + Category 合并 + "Other" 收纳。5-07 大改：Tracker 25 列适配（5/6 P/V 列加进来）+ umbrella 拆卡机制彻底删除（PD updates 端 PM 拆开 + rebuild 端自动按 cell 拆行）+ MONTH_NAME 切到 May。5-19 大改：Tracker 26 列适配（5/19 加 col E "NPD/ASI"）+ ASI 来源从 config 切到 Tracker col E（pd_table_config.json `after_sales_improvement` 字段删除）+ build.py 新增 Excel 365 "image-in-cell" 解析支持（与传统 image-over-cell 并存）+ zero-area 幽灵图过滤（修 RJ44-CB 配错图 bug）。**5-26 大改：Page 1 加 Compare modal（per-category "⇄ Compare" 按钮 → 浮层 + 遮罩 + 5 列 Spec Cards 横向对比，每张卡直显 Cost / MSRP / Factory / Port / Duty / 40'HC / CRD / Sample ETA 八个商业字段，Other 不出按钮、placeholder 在 modal 内隐藏、Page 1 所有 filter 状态全部继承；触发自 Shine 5-26 批准 "as it is"）。* **7-1 大改：Weekly Tracker 删除 11 个阶段列（Kick off→MP，原 Q–AA），Tracker 回 16 列；build.py 清 `stage_label_map`/27列fallback/`stages` 死代码（HTML 从不渲染阶段列，Page2 按 Current Status 分桶，同源双跑验证删除零影响）；PA 列扩为 4 态（加 待批复 / Waiting for Signing，paNorm/paBadge/PA_LABELS/translations 已改）；4 位采购周报的 PA/6A/PO/CRD 一手数据并入 Tracker 四列（单表合并、dimtable 映射，详见 Weekly Tracker/PM_Weekly_Tracker.md）。***
 
@@ -61,7 +61,7 @@ HTML 通过 SKU join 两份数据源生成。**SKU = 唯一的 join key。**
 | 数据源 | 文件位置 | 维护人 | 更新频率 | 数据性质 |
 |--------|----------|--------|----------|----------|
 | **Weekly Tracker** | `Weekly Tracker/China_PD_Weekly_Tracker_WK{周数}.xlsx`（最新一版） | Summer | 周 / 天（PM 周五交，Summer 整理） | 项目进度：阶段、风险、Action、CRD、Milestones、PO 状态 |
-| **Summer's Monthly PD Table** | `Monthly PD Report/Summer_Monthly_PD_Table.xlsx` | Summer（基于 Shine 的 China PD Table 整理） | 低频（Shine 发新版时更新） | 商业静态：Brand、Description、Features、Cost、Factory、Port、Duty、MSRP、Sample ETA |
+| **Summer's Monthly PD Table** | `Monthly PD Report/Summers_Monthly_PD_Table.xlsx` | Summer（基于 Shine 的 China PD Table 整理） | 低频（Shine 发新版时更新） | 商业静态：Brand、Description、Features、Cost、Factory、Port、Duty、MSRP、Sample ETA |
 | ~~Project List~~ | **已退役（2026-07-02）** | — | — | 原用途：Sales 白名单 filter。Summer 删除 HTML 的 For Sales/All toggle 后失去消费方，build.py 死代码同日清除，xlsx 删除 |
 
 **字段权威性规则（出现冲突时按此处理）：**
@@ -86,10 +86,10 @@ HTML 通过 SKU join 两份数据源生成。**SKU = 唯一的 join key。**
 |---|---|---|
 | 1 | Summer | 把新文件扔进 `Monthly PD Report/`：<br>• 新 `Weekly Tracker/China_PD_Weekly_Tracker_WK{N}.xlsx`<br>• 新 `Summers_Monthly_PD_Table.xlsx`（如果走过 §5.2 SOP）<br>• 新 `China PD updates {Mon} {Year}.xlsx`（图片源，build.py 按 mtime 自动找最新） |
 | 2 | Summer | 一句话告诉 Claude："用 WK{N} 重新生成月报" |
-| 3 | Claude（沙箱） | 跑 `python3 build.py` → 产出 CN + EN（EN 此时会有部分中文未翻译，build 会 warn 列出来） |
+| 3 | Claude（本机） | 跑 `python build.py` → 产出 CN + EN（EN 此时会有部分中文未翻译，build 会 warn 列出来） |
 | 4 | Summer | 检查 CN 版本：数据准确性、umbrella SKU 是否有新出现等 |
 | 5 | Claude（对话） | 把 build.py warn 的"未翻译中文串"逐条翻译，追加到 `translations.json`（详见 §5.5） |
-| 6 | Claude（沙箱） | 重跑 `python3 build.py` → EN 干净 0 warning |
+| 6 | Claude（本机） | 重跑 `python build.py` → EN 干净 0 warning |
 | 7 | 双方 | CN + EN 两份 HTML 是当月 / 当周月报，发给受众 |
 
 ### 5.2 PD Table 更新（被动，Summer push 文件触发）—— **2026-05-04 大改：纯镜像重建**
@@ -137,10 +137,11 @@ HTML 通过 SKU join 两份数据源生成。**SKU = 唯一的 join key。**
 - `umbrella_to_variants`（5-07 删）：死代码（build.py 用自己硬编码的 SPLIT_UMBRELLA_SKUS，根本没读这个 config 字段）。新机制：PD updates 端 PM 把多色拆成独立列（每列一 SKU + 独立图），rebuild 自动每 cell 一行。共享一张图的多 SKU（如 RJ50 SS/BLK）仍可写一个 cell，rebuild `parse_sku_cell()` 按换行/制表符拆行，商业字段填重复。
 - `after_sales_improvement`（5-19 删）：ASI 来源切到 Tracker col E "NPD/ASI"，PM/Summer 在 Tracker 维护，不再在 config 里写死。详见 §5.2.2。
 
-**当前配置（2026-05-19）：**
+**配置现状（会随周/月更漂移，以 json 实物为准；2026-07-04 实测）：**
 - 3 个 sku_aliases
 - 4 个 mp_overrides（RJ64-10-V2 四色 PTC/BTR/AQU/LVD）
-- 0 个 manual_additions
+- 3 个 manual_additions
+- 5 个 crd_changes（6-30 加的字段，review-gated，每周重建）
 
 ### 5.2.2 ASI 数据源切到 Tracker col E（2026-05-19 新增）
 
@@ -166,7 +167,7 @@ HTML 通过 SKU join 两份数据源生成。**SKU = 唯一的 join key。**
 
 ### 5.5 EN 版翻译步骤（§5.1 第 5 步详解）
 
-build.py 跑完会 warn 列出未翻译的中文串（PM 写的 issue / next action 等自由文本）。这一步**由对话里的 Claude 完成**，不要试图给 build.py 加 Anthropic API 自动翻译——Cowork 沙箱代理会拦截带 `x-api-key` 的出站请求，技术上行不通。详见 memory `feedback_translation_via_chat`。
+build.py 跑完会 warn 列出未翻译的中文串（PM 写的 issue / next action 等自由文本）。这一步**由对话里的 Claude 完成**，不给 build.py 加 Anthropic API 自动翻译。（原始原因是 Cowork 沙箱代理拦截 `x-api-key` 出站请求；2026-07-02 迁本地后该限制已消失，但流程维持对话翻译——每月一次 5-10 分钟，不值得为此接 API + 管理 key。）
 
 **手动翻译流程（每月一次，5-10 分钟）：**
 1. 跑 build → warn 列表
@@ -183,14 +184,9 @@ build.py 跑完会 warn 列出未翻译的中文串（PM 写的 issue / next act
 - 客户名（Andrew / Ryan / Todd / Tamer / Simon / Denisse / Sarah / Josh / Merlin / Jared）→ 不翻
 - 客户公司（Kohl's / BJ's / Costco / KCL / FedEx / UPS）→ 不翻
 
-### 5.6 跨月切换提醒
+### 5.6 跨月切换（2026-06-02 起已自动化，无需改代码）
 
-build.py 顶部 `MONTH_NAME = 'Apr'` 是硬编码的。5 月 Tracker 第一次产出时，Summer 提一句"切到 May"，Claude 改一行：
-```python
-MONTH_NAME = 'May'
-YEAR = '2026'
-```
-注意 `MONTH_NAME` 用英文三字母简写（Jan/Feb/Mar/Apr/May/Jun/Jul/Aug/Sep/Oct/Nov/Dec），跟 HTML 文件名约定一致。
+build.py 按 **"每月 10 号切月"规则（Summer rule 2026-06-02）自动推导** `MONTH_NAME` / `YEAR` / `REPORT_PERIOD`：构建日 ≥ 当月 10 号 → 报当月；< 10 号 → 报上月（1 月自动跨年）。`DATA_ASOF` 同样自动取"构建日之前最近的周五"。**"Summer 提一句、Claude 改一行"的旧流程已废除**（旧文档描述硬编码 `MONTH_NAME = 'Apr'` 为 2026-06-02 之前的历史，2026-07-04 审计发现本节漏更、已改）。
 
 ### 5.7 PD updates 多 SKU cell 处理（5-07 改）
 
@@ -292,15 +288,8 @@ PD Table / Tracker 里 PM 写的 category 字段五花八门（"Microwave Oven" 
 - 不翻译：SKU、PM 名字、buyer 名字、英文/数字、PD Table 预填的英文 description/features
 - build.py 报漏译 → 对话里 Claude 翻译 → 加进 translations.json（不改 build.py，不调 Anthropic API；详见 §5.5 + memory `feedback_translation_via_chat`）
 
-**OneDrive Files On-Demand bug 应对（5-04 多次踩坑后总结）：**
-- 现象：xlsx 文件大小看着正常，openpyxl 读出 BadZipFile（"File is not a zip file"）。读 raw bytes 是全 0。
-- 根因：OneDrive Files On-Demand 把文件标记为云端占位，本地没真正下载，沙箱看到的就是空壳
-- 防御：`build.py` 和 `rebuild_pdtable.py` 都内置 fallback —— 项目目录读不到时自动降级到 `/sessions/<id>/mnt/uploads/` 找 chat 上传
-- Cowork 上传也可能踩雷：上传后的文件几秒内会被 OneDrive 同步进程"回收"成全 0。**Claude 拿到上传应**第一时间** cp 到 `/sessions/<id>/tmp/` 锁住**，再用本地拷贝继续工作
-- Summer 端最稳的传文件方法：
-  1. 文件夹里右键 → "Always keep on this device" → 等图标变实心绿勾 ✓
-  2. 或 Excel 里打开一次强制 hydrate → 关闭再上传
-  3. 或从 OneDrive 网页版下载到非 OneDrive 路径（如 Downloads/）再上传
+**~~OneDrive Files On-Demand bug 应对~~（历史，Cowork 时代；2026-07-02 迁本地后不再适用）：**
+Cowork 沙箱读 OneDrive 云端占位文件会拿到全 0 字节（BadZipFile），当时靠 uploads fallback + "Always keep on this device" 等手段绕过。本机 Claude Code 读文件会自动触发 OneDrive hydrate，此坑消失；build.py / rebuild_pdtable.py 里的 uploads fallback 代码仍在（本机指向不存在路径，等于空操作），无害保留。
 
 ---
 
@@ -366,18 +355,21 @@ PM 在 PD updates 里写多变体的两种方式都支持：
 ## 8. 构建系统（4-29 重构 + 5-04 大改 + 5-26 加 Compare modal）
 
 **核心文件（`Monthly PD Report/`）：**
-- `template.html` — 完整单文件 HTML 模板。数据位置用 7 个占位符（5-04 PIPELINE_DATA 拆成 US/MX 两个）：
-  - `{{PAGE1_DATA}}`、`{{PIPELINE_US_DATA}}`、`{{PIPELINE_MX_DATA}}`、`{{PAGE3_DATA}}`、`{{SUMMARY_STATS}}`、`{{RELEASED_DATA}}`、`{{BANNER_BLOCK}}`
+- `template.html` — 完整单文件 HTML 模板。占位符共 13 个（2026-07-04 实测核对）：
+  - 数据 8 个：`{{PAGE1_DATA}}`、`{{PIPELINE_US_DATA}}`、`{{PIPELINE_MX_DATA}}`、`{{PAGE3_DATA}}`、`{{SUMMARY_STATS}}`、`{{RELEASED_DATA}}`、`{{BANNER_BLOCK}}`、`{{CRD_CHANGE_DATA}}`（6-30 加）
+  - 双语 label 字典 3 个：`{{PO_LABELS}}`、`{{PA_LABELS}}`、`{{SIXA_LABELS}}`
+  - 元信息 2 个：`{{REPORT_PERIOD}}`、`{{DATA_ASOF}}`
   - **5-26 加**：Compare modal CSS 块（`.compare-btn` / `.compare-overlay` / `.compare-modal*` / `.spec-grid` / `.spec-card*`）+ Compare modal HTML 容器（`#compareOverlay` / `#compareModalBody`）+ JS 三个新函数 `buildSpecCard(p,idx)` / `openCompareModal(category)` / `closeCompareModal()` + `closeModal()` 改成"只在 Compare modal 不活时才解锁 body scroll" + Escape handler 改成级联（详情 modal 优先关，再关 Compare modal）。`filterPage1()` 渲染 cat-header 那行加按钮注入（Other 跳过 / count < 2 跳过）。**不动 build.py 不动数据流**——所有字段已在 page1Data 里。
 - `build.py` — HTML 构建脚本。读三个 xlsx + 抽 PD updates 图 → 应用 ASI/MP 过滤 → 渲染 5 份 JSON + banner HTML → 灌进模板 → 输出
 - `rebuild_pdtable.py` — **新（5-04）** PD Table 重建脚本（详见 §5.2）。一键完成 transpose + manual_additions + 自动 Tracker 比对。
 - `pd_table_config.json` — **新（5-04）** ASI / umbrella / manual_additions 配置（详见 §5.2.1）。**两个脚本都读这个文件**。
-- `translations.json` — CN→EN 翻译字典（约 220 条）
+- `translations.json` — CN→EN 翻译字典（随月更持续追加；2026-07-02 时 863 条，正文他处出现的 220/294 等数字为历史时点值）
 
-**路径处理：**
-- `BASE = Path(__file__).resolve().parent.parent` 自动从脚本位置推导
-- `SCRATCH = Path(os.environ.get('CLAUDE_SCRATCH', '/tmp/pd_report_scratch'))`
-- `TRACKER_PATH` 和 `PDUPDATES_PATH`：glob 找项目目录，OneDrive Files On-Demand bug 时自动 fallback 到 `/sessions/.../mnt/uploads/`（5-04 新增）
+**路径处理（2026-07-02 本地化后）：**
+- `BASE` 自动从脚本位置推导（`MONTHLY_DIR.parent`）
+- `SCRATCH = CLAUDE_SCRATCH 环境变量，缺省用系统临时目录`（`tempfile.gettempdir()/pd_report_scratch`，原 hardcode `/tmp` 已改）
+- stdout/stderr 强制 UTF-8（Windows 控制台 cp1252 遇中文会崩）
+- `TRACKER_PATH` / `PDUPDATES_PATH`：glob 找项目目录内最新可读文件；Cowork 时代的 uploads fallback 代码保留但本机为空操作
 
 **数据流：**
 ```
@@ -401,7 +393,7 @@ PM 在 PD updates 里写多变体的两种方式都支持：
     releasedData
         ↓ build_banner_html (Tracker - PD Table - ASI - MP, 按 PM 分组阈值 ≥3)
     banner HTML
-        ↓ render_template（6 个占位符替换）
+        ↓ render_template（13 个占位符替换，清单见上方 template.html 条目）
     最终 HTML
         ↓ write_with_rotation
     CN + EN 两份输出
@@ -433,65 +425,41 @@ Kick off → Detail Design → Prototype → Tooling → FOT → EB → Culinary
 - CN：`China_PD_Monthly_Report_{Mon}{Year}.html`（如 `_Apr2026.html`）
 - EN：`China_PD_Monthly_Report_{Mon}{Year}_EN.html`
 - 上一版备份：`_prev.html` 后缀（每月份 family 各保留一份 prev）
-- 月份按"数据所属月份"命名（April 报告 = `_Apr2026.html`），不按运行日期。月底切换到 May 时手动改 build.py 里的 `MONTH_NAME` 常量。
+- 月份按"数据所属月份"命名（June 报告 = `_Jun2026.html`），不按运行日期。月份由 build.py 按"每月 10 号切月"规则自动推导（详见 §5.6），无需手动改常量。
 
 **Rotation 规则：**
 - 同一月份命名 family：跑第 N 次 → 当前 → 改名 `_prev`，旧 `_prev` 删掉，新内容写当前
 - 跨月不影响（4 月跑产出 `_Apr2026.html`，5 月跑产出 `_May2026.html`，互不干扰）
 - 4-24 那批 baseline HTML（`China-PD-Monthly-Update.html` / `index.html` / `_v20260421_*`）一律不动
 
-**写文件双跳避免 OneDrive 截断：**
-- build.py 先写到 outputs scratch（`/sessions/.../mnt/outputs/`）
-- 然后 `shutil.copyfile` 到 OneDrive 工作目录
-- 如果遇到 PermissionError，回退到 `out_path.write_text` 直写
+**写文件路径（2026-07-02 本地化后）：**
+- build.py 先写 SCRATCH（系统临时目录）再 copy 到工作目录；Cowork 时代"双跳避免 OneDrive 截断"的动机已消失，流程保留是因为无害且顺手。
 
-**已知技术坑：**
-- **OneDrive Files On-Demand bug：** 文件 mtime/大小看着正常，但内容是全 0 字节。读到 BadZipFile / "File is not a zip file" 错误。修复：右键文件 → "Always keep on this device" 等同步成绿对勾，或在 Excel 里打开强制下载，或 Save As 到非 OneDrive 路径。
+**已知技术坑（2026-07-04 按本机环境重新标注）：**
+
+*仍然有效（本机）：*
 - **Excel 锁文件：** Excel 还开着时读 xlsx 会报 BadZipFile。先关 Excel 再让 build.py 读。
-- **Edit / Write tool 截断 build.py：** 大文件被工具截断或注入 null bytes 是常见事故（4-30 当天截断了两次）。修复办法：head -n 到 last clean line + Python 脚本 append 剩余部分（heredoc 也行但小心 `!` 转义），或者 `data.replace(b'\x00', b'')` 清 null bytes 后重写。每次大改完用 `python3 -c "import ast; ast.parse(open(f).read())"` 验证语法。
-- **bash heredoc 会转义 `!`：** 写 HTML / JS 用 Python 文件 IO，不用 heredoc。
 - **WMF 图片格式：** openpyxl 读 PD updates 时如果遇到 WMF 格式的图会 warn 并丢弃。WMF 是少数情况（绝大多数 PM 用 PNG/JPEG），目前没专门处理。
 - **PIL 处理透明度：** RGBA / LA / P 模式图先在白底上 paste 一次再保存为 JPEG（JPEG 不支持 alpha），避免黑底。
+- **大改 build.py 后验证语法：** `python -c "import ast; ast.parse(open(f, encoding='utf-8').read())"`，好习惯保留。
+
+*历史（Cowork 沙箱专属，2026-07-02 迁本地后不再适用）：*
+- ~~OneDrive Files On-Demand 全 0 字节 bug~~（本机自动 hydrate）
+- ~~Edit / Write tool 截断大文件 / 注入 null bytes~~（Cowork 沙箱 + OneDrive 同步竞态所致）
+- ~~bash heredoc 转义 `!`~~（当时被迫用 heredoc 写大文件的场景已不存在；本机直接用文件工具）
 
 ---
 
-## 9. 当前数据源状态（2026-05-26 刷新）
+## 9. 当前数据源状态（2026-07-04 重写：本节只记"现在"，历史时点快照一律看 §11 变更记录）
 
-- **Weekly Tracker WK22** — 85 行 SKU，含 23 个 MP/Inspection 状态（Project Released）。26 列结构（5/19 加 col E NPD/ASI 之后稳定）。
-- **Summers Monthly PD Table** — 62 行 SKU（最近一次重建后没动）。
-- ~~Project list.xlsx~~ — 已退役并删除（2026-07-02），白名单 filter 不复存在。
-- **China PD updates May 2026** — 同 5-19 的版本（5-26 没换 PD updates，只换了 Tracker）。
-- **pd_table_config.json** — 3 sku_aliases + 4 mp_overrides + 0 manual_additions。
+> 旧版本节曾长期冻结在 5 月的快照（WK22 / 26 列 / May 数据），与 §1、§11 记录的 7-1 改动相互矛盾，2026-07-04 清理重写。**原则：本节不再堆每次跑完的 stats 数字**（那些数字只在当次有意义），要历史去 §11 找。
 
-**HTML 输出（2026-05-26）：**
-- Page 1：69 张卡（59 真卡 + 10 placeholder；17 个并入 "Other"）
-- Stats Bar：Total=69, High=4, Mid=14, T1=6, **Project Released=23**
-- Banner: ON
-- **ASI 集（8 个 from Tracker col E）：** RJ38-10-RDO-V3, RJ54-G-SS, RJ54-G-SS-D-BLK, RJ54-SS-15-D-UK-EU, RJ62-20A-Series, RJ62-BLACK, RJ64-10-V2-WHT, RJ64-10-new colors
-- **图片覆盖：** 58 SKUs（image-over-cell 43 + image-in-cell 15），9 张 skip
-- **Compare modal（5-26 加）：** 6 个 category 出按钮（Kettle / Slow Cooker / Air Fryers / Microwave / Oven / Blender；Other 跳过、所有 ≥2 SKU 的非-Other 品类都有按钮）
-
-**今天工作的总结（2026-05-19）：**
-- **Tracker 26 列适配**：build.py `load_tracker` + rebuild_pdtable.py `load_tracker_skus` 都按 col E=NPD/ASI / 后续列右移一位 / stage=P-Z 重新读
-- **ASI 数据源切换**：从 `pd_table_config.json` `after_sales_improvement` list → Tracker col E。删了 config 字段
-- **build.py 加 `_extract_image_in_cell_raw()`**：支持 Excel 365 image-in-cell（rich-data 链路解析），与 image-over-cell 并存
-- **加 zero-area 幽灵图过滤**：修 RJ44-CB 卡片配错图 bug（Coffee&Iceman col 5 一张零宽幽灵蓝水桶图覆盖了真磨豆机图）
-- 用 WK21 + 新 PD updates 跑 rebuild + build，发邮件 Teams broadcast 给 5 PM（A 类 11 个、B 类 8 个），等本周回填
-
-**HTML 输出（5-19）：**
-- `China_PD_Monthly_Report_May2026.html` — 中文版，Page 3 issue/action 保留中文
-- `China_PD_Monthly_Report_May2026_EN.html` — 英文版，所有数据字段翻译（5-19 有 119 条新中文待翻译，对话翻译流程未跑）
-- 都是 4-21 胡总确认的三页结构 + Stats Bar + Risk Panel
-- 4-29 新增功能：Project List filter toggle (For Sales / All)、Pipeline 默认 Kick off 激活、Pipeline / Tracker 加 PO 列、Tracker 加 PO/Buyer filter、Banner（PM 阈值触发）、双语自动产出
-- 4-30 新增功能：产品渲染图自动抽取嵌入卡片、umbrella SKU 拆卡（`SPLIT_UMBRELLA_SKUS`，**5-07 已删**）、PD updates 文件自动找最新
-- 5-07 改造：Tracker 25 列适配（5/6 P/V 列加进来）+ umbrella 字典彻底删（PD updates 端拆 + rebuild 端按 cell 自动拆）+ manual_additions 清空 + MONTH_NAME → May 2026
-- 5-19 改造：Tracker 26 列适配（NPD/ASI col E）+ ASI 来源切到 Tracker col E + image-in-cell 支持 + zero-area 幽灵图过滤
-
-**Banner 当前触发（5-19）：** ON（PM 端有待补 business info 的 SKU）
-
-**Stats Bar 当前数字（5-19）：** Total=72, High=4, Mid=15, T1=6, Released=20
-
-**图片覆盖（5-19）：** 58 SKUs 有图（image-over-cell 43 + image-in-cell 15），9 张 skip（含 2 张 zero-area 幽灵图）。
+- **Weekly Tracker** — `Weekly Tracker/` 下 WK 号最大的一份。**16 列结构（2026-07-01 删 11 个阶段列后）**，列定义见 `Weekly Tracker/PM_Weekly_Tracker.md`。
+- **Summers Monthly PD Table** — 每月 Shine 发新 PD updates 后用 rebuild_pdtable.py 重建（纯镜像）。
+- **China PD updates {Mon} {Year}.xlsx** — 图源 + PD Table 重建源，build.py 按 mtime 自动找最新。
+- **pd_table_config.json** — sku_aliases / mp_overrides / manual_additions / crd_changes（6-30 加，review-gated）。
+- ~~Project list.xlsx~~ — 已退役并删除（2026-07-02）。
+- **最近一次构建：** 2026-06-30，WK26 Tracker + China PD updates Jun 2026，产出 `China_PD_Monthly_Report_Jun2026(.html/_EN.html)`；7-2 迁本地后重跑 EN 0 warning（translations.json 863 条）。详见 §11。
 
 ---
 
@@ -506,7 +474,7 @@ Kick off → Detail Design → Prototype → Tooling → FOT → EB → Culinary
 | HTML 输出（EN） | `Monthly PD Report/China_PD_Monthly_Report_{月}{年}_EN.html` |
 | 数据源 1（Tracker） | `Weekly Tracker/China_PD_Weekly_Tracker_WK{周数}.xlsx` |
 | 数据源 2（PD Table） | `Monthly PD Report/Summers_Monthly_PD_Table.xlsx` |
-| HTML 模板 | `Monthly PD Report/template.html`（5 个 `{{...}}` 占位符） |
+| HTML 模板 | `Monthly PD Report/template.html`（13 个 `{{...}}` 占位符，清单见 §8） |
 | 构建脚本 | `Monthly PD Report/build.py` |
 | 翻译字典 | `Monthly PD Report/translations.json` |
 
@@ -532,6 +500,14 @@ Kick off → Detail Design → Prototype → Tooling → FOT → EB → Culinary
 ### 2026-07-02（迁移到 Claude Code + Project List 退役）
 
 - **全工作流从 Cowork 迁至本机 Claude Code**：build.py / rebuild_pdtable.py 本地化——scratch 目录改用系统临时目录（原 hardcode `/tmp`）、stdout/stderr 强制 UTF-8（Windows 控制台 cp1252 遇中文即崩，首跑就栽在这）；本机装 Pillow 12.3.0；Cowork 时代的 OneDrive Files On-Demand / 上传中转 / 双跳写文件等坑全部消失（本地读文件自动 hydrate）。
-- **Project List 白名单退役**：Summer 此前已删 HTML 的 For Sales/All toggle，7-2 验证 `onProjectList` 在 template.html 零引用后，清除 build.py 死代码（`_find_latest_project_list` / `load_project_list` / 卡片 `onProjectList` 字段 / main 调用），删除 `Project list_5-20-2026.xlsx`。**HTML 数据源三 → 二**（Weekly Tracker + Summers Monthly PD Table）。
+- **Project List 白名单退役**：Summer 此前已删 HTML 的 For Sales/All toggle，7-2 验证 `onProjectList` 在 template.html 零引用后，清除 build.py 死代码（`_find_latest_project_list` / `load_project_list` / main 调用），删除 `Project list_5-20-2026.xlsx`。**HTML 数据源三 → 二**（Weekly Tracker + Summers Monthly PD Table）。（2026-07-04 审计核准表述：placeholder 卡仍输出 `'onProjectList': False` 字段、`stage_label_map` 保留空壳 + 兼容循环——均为 template 零引用的无害残留，故意保留不算未清；"死代码清除"指有调用链的部分。）
 - translations.json 860 → 863（补 3 条 WK26 采购/PM 状态），Jun2026 双语 HTML 重出、EN 0 warning。
 - 同日外围变化（不影响本项目数据流）：Sales Tracker 重构为 `Sales FollowUp/` 活清单；周五定时扫描任务迁至 Code Scheduled Tasks。
+
+### 2026-07-04（全文一致性清理，不改代码只改本文档）
+
+7-2 迁移当天只做了重点章节的 spot-fix，本次把正文与 §1/§11 已记录的现实对齐：
+- **Cowork 残留清理**：§5.1"Claude（沙箱）"→ 本机；§5.5 翻译不走 API 的理由更新（沙箱拦截已成历史，维持对话翻译是成本决定）；§6 OneDrive Files On-Demand 应对整段、§8 双跳写文件、§8 技术坑清单——Cowork 专属项全部标注历史，本机仍有效的（Excel 锁文件/WMF/PIL 透明度）单独留存。
+- **§8 路径描述更新**为 7-2 本地化后的实际代码（系统临时目录 scratch、UTF-8 stdout、uploads fallback 本机空操作）。
+- **§9 整节重写**：原节冻结在 5-26 快照（WK22 / "26 列稳定" / May 数据，与 7-1 的 16 列矛盾），改为"只记现在、历史看 §11"，不再堆单次 stats 数字。
+- **占位符数目修正**：template.html 实测 13 个（数据 8 + label 3 + 元信息 2），§8/§10 原写 5/7 个均已改。translations.json 条数注明"随月更增长"，正文历史数字不再逐处追改。

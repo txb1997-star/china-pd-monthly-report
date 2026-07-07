@@ -19,7 +19,7 @@
 ## 紧接着
 
 - [ ] **HTML 改造（Summer 仍有多处想改）** — 单独梳理后再做
-- [ ] **index.html 更新机制待定** — GitHub Pages 首页仍是 4 月 EN 版拷贝，build.py 不更新它；要么让 build 自动同步最新 EN 版，要么改成月份目录页（待 Summer 定）
+- [ ] **index.html 更新机制待定** — GitHub Pages 首页目前是人工拷贝的最新 EN 版（现为 Jun2026），build.py 不自动更新它，每月要手动同步一次；要么让 build 自动同步最新 EN 版，要么改成月份目录页（待 Summer 定）
 
 ## 中期
 

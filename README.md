@@ -10,13 +10,14 @@ Chefman 中国 PD 团队月度产品开发进度报表的构建系统与最新�
 
 ## 这是什么
 
-这个 repo 把每月一次的 China PD 进度报表从 Excel 数据源转成可交互、可分享的 HTML 网页。报表覆盖三页:
+这个 repo 把每月一次的 China PD 进度报表从 Excel 数据源转成可交互、可分享的 HTML 网页。报表覆盖四页:
 
-1. **Page 1 — SKU 卡片视图**:按 Tier / Category 分组,可筛可搜。Stats Bar 顶部数字 = 当前可见卡片数。
-2. **Page 2 — PD Tracker 完整表**:含所有项目,合并 Umbrella SKU。
-3. **Page 3 — 关键节点 / Launch Date 视图**。
+1. **Page 1 — SKU 卡片视图**:按 Category 分组的产品卡片(含渲染图),可筛可搜,每品类带 ⇄ Compare 横向对比浮层。顶部 Stats Bar 六个可点统计块(Total / CRD Change / High Risk / Medium Risk / Tier 1 / Project Released),各有独立计数口径(不等于可见卡片数)。
+2. **Page 2A — Pipeline US**:11 阶段横向管线(Kick off → MP),按 Current Status 分桶,点击下钻;NPD/ASI 切换。
+3. **Page 2B — Pipeline MX**:同结构,只收 `-MX` 后缀 SKU。
+4. **Page 3 — Weekly Tracker 明细表**:全项目行级视图,按 PM / Location / PO / Buyer 筛选。
 
-中英双语同源构建,改一处自动两边同步。
+中英双语同源构建,改一处自动两边同步。月份自动按"每月 10 号切月"规则推导,无需改代码。
 
 ---
 
@@ -27,9 +28,9 @@ Chefman 中国 PD 团队月度产品开发进度报表的构建系统与最新�
 ├── build.py                              # 构建脚本(读 xlsx → 套 template → 写 HTML)
 ├── template.html                         # HTML 模板(布局、样式、JS 交互)
 ├── translations.json                     # 中英文术语映射表
-├── index.html                            # GitHub Pages 默认页(EN 版的副本)
-├── China_PD_Monthly_Report_Apr2026.html  # 当月中文成品
-├── China_PD_Monthly_Report_Apr2026_EN.html  # 当月英文成品
+├── index.html                            # GitHub Pages 默认页(最新 EN 版的副本)
+├── China_PD_Monthly_Report_{Mon}{Year}.html     # 当月中文成品(如 _Jun2026.html)
+├── China_PD_Monthly_Report_{Mon}{Year}_EN.html  # 当月英文成品
 ├── Monthly_PD_Project.md                 # 项目说明 / 决策记录
 ├── China_PD_Table_Update.md              # 报表更新注意事项
 ├── Todo_List.md                          # 进度清单
@@ -98,4 +99,4 @@ git push
 
 [@txb1997-star](https://github.com/txb1997-star) — Summer Tan, Chefman PMO
 
-如有数据问题或希望加入 Sales Tracker 等其它视图,提 Issue 或直接联系 Summer。
+如有数据问题或新视图需求,提 Issue 或直接联系 Summer。
