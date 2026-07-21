@@ -164,6 +164,7 @@ PD Table 重建阶段**不再做 PD vs Tracker 交叉匹配**——这一步只�
 - RJ62-BLK / RJ62-WHT 是 RJ62-20A-Series 的 gen1/gen2 颜色变体
 - RJ64-20 — on hold（Serena 确认）
 - RJ64-10-PTC / BTR / LVD / Aqua 是 RJ64-10-new colors 的具体颜色变体名
+- **ICM1239X = RJ56-BUL-12-V2 同一产品**（Summer 2026-07-07 确认，Tracker 已删 ICM1239X 行只留 BUL）——今后任何数据源出现 ICM1239X 一律映射到 RJ56-BUL-12-V2 再问 Summer 确认
 
 **Tammy / Chris Zhou：**
 - RJ59-HNC-MX ≠ RJ59-HNC-V2-MX — Tammy 确认是两个不同产品，不能合并
@@ -171,6 +172,10 @@ PD Table 重建阶段**不再做 PD vs Tracker 交叉匹配**——这一步只�
 
 **Cottee Wei：**
 - RJ38-2D-AM 是 RJ38-2D-V2 的 Amazon 渠道版本，独立新行
+
+**Liz Liu（写法颠倒惯犯，2026-07-07 两例）：**
+- **RJ11-SS-12 / RJ11-SSD-12（PD updates 写法）= RJ11-12-SS / RJ11-12-SSD（Tracker 写法）**——Liz 曾说不是、Summer 判断是并按同一产品处理（sku_aliases 已配 `RJ11-12-SS→RJ11-SS-12`；SSD 走 `pd_exclude_skus` 排除了 PD 侧重复旧列、保留 Tracker 写法列）。若 Liz 反转结论，删 alias/exclusion 重跑即可
+- Liz 在 PD updates 里可能同一产品填两列（一列新数据一列复制的旧壳）——重建后 diff 时看到她的"新 SKU"先怀疑是写法变体或重复列
 
 **Liz Liu（2026-04 休假中，10 个 SKU 待确认）：**
 - RJ11-12-SSTI-D、RJ11-15-SSD、RJ11-12-SCTI、RJ11-17-CTI-DG、RJ11-18-CTI-HP-V3、RJ11-GN-BLK-V2、RJ11-GN-BLK-AM、RJ11-12-SS-TI-MX、RJ55-7-VN-MX、RJ55-7-SMR-VN-MX
@@ -369,16 +374,17 @@ Row Y+: SKU 写法不一致需 PM 确认的行（黄底）
 
 旧版 11 步 Checklist 已合并进 `rebuild_pdtable.py` 里，每次跑只需要：
 
-1. ☐ Summer 把新版 `China PD updates {Mon} {Year}.xlsx` 拖进 `Monthly PD Report/`（或 chat 上传）
+1. ☐ Summer 把新版 `China PD updates {Mon} {Year}.xlsx` 拖进 `Monthly PD Report/`（或给出 SharePoint 路径由 Claude 拷入，旧版移入 Archive）
 2. ☐ 跟 Claude 说"重建 PD Table"
 3. ☐ Claude 跑 `python3 rebuild_pdtable.py`：
+    - **脚本自动**把旧版 PD Table 备份到 `Archive/`（2026-07-07 起写进脚本；此前靠人记得，06-30 / 07-07 两次都漏，遂固化）
     - 读 config + PD updates → 输出新 PD Table（覆盖旧版）
     - 自动比对 Tracker，输出 A/B/C 三段 diff
-4. ☐ Summer 看 diff → 决定是否需要给 PM 发邮件 broadcast（用 §7.1 模板）
-5. ☐ 旧版 PD Table 自动备份到 `Archive/`（Claude 在脚本运行前完成）
-   > ⚠️ 2026-07-04 审计发现：06-30 那次重建漏了这一步（Archive 最新备份停在 06-23，旧版已不可追）。此步骤是硬步骤，下次重建必须执行。
+4. ☐ **硬关卡 ✋（2026-07-07 Summer 重申，Cowork 时代原有、迁本地后一度被跳过）：A/B 两段 diff 按 PM 分组列给 Summer，她逐项 confirm（加 alias / mp_override / 删 manual_addition / 保持占位 / 不管）之前，不得跑 build.py 生成 HTML。**
+5. ☐ Summer 顺带决定是否给 PM 发 broadcast 邮件（用 §7.1 模板）
+6. ☐ Summer confirm 后 Claude 落配置、跑 build.py（进入 Monthly_PD_Project.md §5.1 第 5 步起的流程）
 
-**完成判定：** 新 `Summers_Monthly_PD_Table.xlsx` 已写入 + diff 已展示 + Summer 看过觉得 OK。**不再需要 PM 单独确认才能转正**——PD Table 就是 PD updates 的直接镜像。
+**完成判定：** 新 `Summers_Monthly_PD_Table.xlsx` 已写入 + diff 已展示 + **Summer 已逐项 confirm**。**不再需要 PM 单独确认才能转正**——PD Table 就是 PD updates 的直接镜像。
 
 ---
 

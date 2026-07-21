@@ -86,11 +86,14 @@ HTML 通过 SKU join 两份数据源生成。**SKU = 唯一的 join key。**
 |---|---|---|
 | 1 | Summer | 把新文件扔进 `Monthly PD Report/`：<br>• 新 `Weekly Tracker/China_PD_Weekly_Tracker_WK{N}.xlsx`<br>• 新 `Summers_Monthly_PD_Table.xlsx`（如果走过 §5.2 SOP）<br>• 新 `China PD updates {Mon} {Year}.xlsx`（图片源，build.py 按 mtime 自动找最新） |
 | 2 | Summer | 一句话告诉 Claude："用 WK{N} 重新生成月报" |
-| 3 | Claude（本机） | 跑 `python build.py` → 产出 CN + EN（EN 此时会有部分中文未翻译，build 会 warn 列出来） |
-| 4 | Summer | 检查 CN 版本：数据准确性、umbrella SKU 是否有新出现等 |
-| 5 | Claude（对话） | 把 build.py warn 的"未翻译中文串"逐条翻译，追加到 `translations.json`（详见 §5.5） |
-| 6 | Claude（本机） | 重跑 `python build.py` → EN 干净 0 warning |
-| 7 | 双方 | CN + EN 两份 HTML 是当月 / 当周月报，发给受众 |
+| 3 | Claude（本机） | （PD updates 有新版时）先跑 `rebuild_pdtable.py`：脚本自动备份旧 PD Table 进 Archive → 重建 PD Table → 输出 **A/B/C 三段 diff（按 PM 分组）** |
+| 4 | **Summer（硬关卡 ✋）** | **确认 diff 之前不得跑 build.py**（2026-07-07 Summer 重申；此关卡 Cowork 时代就有，迁本地后一度被跳过）。A 类（Tracker 有 PD 没有）/ B 类（PD 有 Tracker 没有）按 PM 逐条给 Summer 过目，她逐项拍板：加 alias / mp_override / 删 manual_addition / 保持占位 / 不管 |
+| 5 | Claude（本机） | 落配置后跑 `python build.py` → 产出 CN + EN（EN 此时会有部分中文未翻译，build 会 warn 列出来） |
+| 6 | Summer | 检查 CN 版本：数据准确性、umbrella SKU 是否有新出现等 |
+| 7 | Claude（对话） | 把 build.py warn 的"未翻译中文串"逐条翻译，追加到 `translations.json`（详见 §5.5） |
+| 8 | Claude（本机） | 重跑 `python build.py` → EN 干净 0 warning |
+| 9 | 双方 | CN + EN 两份 HTML 是当月 / 当周月报，发给受众 |
+| 10 | **Summer 本人** | **git push 上 GitHub Pages（2026-07-07 定）：Claude 的职责到"本地文件更新完"为止（含 index.html 同步），不执行 push；Summer 想发布时自己跑 `Push_NOW.bat` 或手动 git push** |
 
 ### 5.2 PD Table 更新（被动，Summer push 文件触发）—— **2026-05-04 大改：纯镜像重建**
 
@@ -132,16 +135,19 @@ HTML 通过 SKU join 两份数据源生成。**SKU = 唯一的 join key。**
 | `sku_aliases` | Tracker SKU → PD Table canonical 名映射，用于 rebuild gap analysis + build.py tracker-row matching。如 `RJ38-G4-AS → RJ38-G4-LS`（Cottee typo）、`RJ38-9TW-V3 → RJ38-9TW-V2`、`RJ56-DIS-V2-CA-CO → RJ56-DIS-V2`。 |
 | `mp_overrides` | PD Table SKU 强制当 MP（Released）。用于 PM 在 PD updates 把多色拆开但 Tracker 只有一行 MP 时。如 `RJ64-10-V2-{PTC,BTR,AQU,LVD}`。 |
 | `manual_additions` | 注入 PD Table 的额外行。当 PM 还没把项目放进 PD updates 但 Summer 已经有 business info 时用这个。每条 entry 含 SKU 列表 + PM + 字段映射。 |
+| `pd_exclude_skus`（2026-07-07 加） | PD updates 里确认的**重复/作废列**，镜像时跳过（rebuild 会打印 excluded 日志）。首例：Liz 的 RJ11-SSD-12 与 RJ11-12-SSD 重复填报，Summer 裁决留数据真实的后者。PM 在源文件删掉重复列后，应把对应条目从这里移除。 |
+| `crd_change_overrides`（2026-07-07 加，取代 `crd_changes`） | CRD Change tab 的**人工覆盖层**：`{sku, reason, reasonEN, suppress}`。tab 数据本体已改为 build.py `compute_crd_changes()` **每次构建自动 diff 上一周 Tracker**（见 §5.2.3），这里只放 Summer 周更确认时想改的措辞或要剔除的误报。原手填数组 `crd_changes` 同日退役（6-30 建的 review-gated 手填模式导致 WK27 忘更、tab 陈旧一周，Summer 裁定必须程序化）。 |
 
 **已删字段：**
 - `umbrella_to_variants`（5-07 删）：死代码（build.py 用自己硬编码的 SPLIT_UMBRELLA_SKUS，根本没读这个 config 字段）。新机制：PD updates 端 PM 把多色拆成独立列（每列一 SKU + 独立图），rebuild 自动每 cell 一行。共享一张图的多 SKU（如 RJ50 SS/BLK）仍可写一个 cell，rebuild `parse_sku_cell()` 按换行/制表符拆行，商业字段填重复。
 - `after_sales_improvement`（5-19 删）：ASI 来源切到 Tracker col E "NPD/ASI"，PM/Summer 在 Tracker 维护，不再在 config 里写死。详见 §5.2.2。
 
-**配置现状（会随周/月更漂移，以 json 实物为准；2026-07-04 实测）：**
-- 3 个 sku_aliases
-- 4 个 mp_overrides（RJ64-10-V2 四色 PTC/BTR/AQU/LVD）
-- 3 个 manual_additions
-- 5 个 crd_changes（6-30 加的字段，review-gated，每周重建）
+**配置现状（会随周/月更漂移，以 json 实物为准；2026-07-07 实测）：**
+- 4 个 sku_aliases（G4-AS、9TW-V3、DIS-V2-CA-CO、RJ11-12-SS）
+- 7 个 mp_overrides（RJ64-10-V2 四色 + RJ07-32-SS-D-CA + RJ11-GN-BLK-V2/GN-SS-V2）
+- 1 个 manual_additions（Popcorn Maker）
+- 1 个 pd_exclude_skus（RJ11-SSD-12）
+- 0 个 crd_change_overrides（原 `crd_changes` 手填数组已于 2026-07-07 退役，tab 改自动计算，见 §5.2.3）
 
 ### 5.2.2 ASI 数据源切到 Tracker col E（2026-05-19 新增）
 
@@ -156,6 +162,16 @@ HTML 通过 SKU join 两份数据源生成。**SKU = 唯一的 join key。**
 **5-19 WK21 ASI 集（7 个）：** RJ38-10-RDO-V3, RJ54-G-SS, RJ54-G-SS-D-BLK, RJ54-SS-15-D-UK-EU, RJ62-20A-Series, RJ64-10-V2-WHT, RJ64-10-new colors
 
 **改 ASI 的操作：** 改 Tracker col E（不是 config 了）→ 跑 build。
+
+### 5.2.3 CRD Change tab 自动计算（2026-07-07 加）
+
+**与周更三提醒同源**（Summer 定）：周更 Step 4 出的"CRD Delay 提醒"和月报 CRD Change tab 是同一份数据、同一口径，由 build.py `compute_crd_changes()` 统一计算：
+
+- **基线**：`Weekly Tracker/`（含 Archive）里 WK 号次大的 Tracker；每次 build 自动 diff
+- **入选口径（沿用 6-30 定稿）**：`delay` = CRD 比上一周推迟 + 有 PO（提前不收）；`risk` = 高风险 + 有 PO（CRD 未动但可能 delay）
+- **Delay Reason**：默认取 Tracker 卡点列原文（EN 走 translations.json，与 Page 3 issue 同源）；要改措辞/剔除误报 → 写 `pd_table_config.json` 的 `crd_change_overrides`
+- **日期解析**：只认无歧义写法（date 单元格 / M/D/YYYY）；纯文字 CRD（"下单后50天MP"等）不参与 diff
+- 周更流程里 Summer 确认三提醒时即完成对 tab 内容的 review——不再有单独的手填步骤
 
 ### 5.3 ~~Project List 更新~~（已作废，2026-07-02 Project List 退役）
 
@@ -229,7 +245,14 @@ PD Table / Tracker 里 PM 写的 category 字段五花八门（"Microwave Oven" 
 - **计入所有 stats**（Total / High Risk / Mid Risk）；Stat number == Risk Detail Panel 行数（同一 filter）
 - （历史）For Sales toggle ON 时 placeholder 仍然显示——该 toggle 已于 2026-07-02 随 Project List 退役删除，placeholder 现无条件显示
 
-**顶栏 Stats Bar（2026-05-04 大改）：**
+**顶栏 Stats Bar（2026-05-04 大改；2026-07-07 改版）：**
+
+> **2026-07-07 现行版（Summer 定）**：5 块，顺序 **Total Projects → CRD Change → PA / 6A 未完成 → High Risk → Medium Risk**。
+> - **PA / 6A 未完成**（新，取代 Tier 1 CSM 块）：口径 = 周更 PA/6A 两项提醒的并集——已 PP/Culinary PP Appr./MP 且（PA≠Done 或 Amazon 已下PO 且 6A 未完成非 N/A）。计数前端实时算（`pa6aCount()`），点开面板标题栏有 **PA / 6A 两个切换按钮**（在 × 左边），分别看 PA 视图 / 6A 视图（SKU/PM/Status/徽章/PO/CRD 六列）。双语 label 走 `{{PA6A_LABELS}}` 占位符。
+> - **Project Released 暂时下线**（非永久删，有人提意见就恢复）：tile HTML 存在 `renderStats()` 的 `releasedTile` 变量里，恢复 = innerHTML 串尾接 `+releasedTile`；`showReleasedDetail`/statClick released 分支/`{{RELEASED_DATA}}` 全部保留。
+> - Tier 1 块的 `statClick('t1')` 分支与 `summaryStats.t1` 计算保留，可回退。
+> 下方为 2026-05-04 版历史记录：
+
 - 5 个浮动可点击卡片：**Total Projects / High Risk / Medium Risk / Tier 1 (CSM) / Project Released**（旧版 In MP 改名）
 - 视觉：白色圆角卡片 + 顶部色条（Total/T1=深蓝渐变, High=红, Mid=橙, Released=绿），数字统一深蓝
 - **新计数规则（Shine + Summer 2026-05-04 确认，5-04 晚再改一次让 stat == panel）：**
@@ -457,7 +480,7 @@ Kick off → Detail Design → Prototype → Tooling → FOT → EB → Culinary
 - **Weekly Tracker** — `Weekly Tracker/` 下 WK 号最大的一份。**16 列结构（2026-07-01 删 11 个阶段列后）**，列定义见 `Weekly Tracker/PM_Weekly_Tracker.md`。
 - **Summers Monthly PD Table** — 每月 Shine 发新 PD updates 后用 rebuild_pdtable.py 重建（纯镜像）。
 - **China PD updates {Mon} {Year}.xlsx** — 图源 + PD Table 重建源，build.py 按 mtime 自动找最新。
-- **pd_table_config.json** — sku_aliases / mp_overrides / manual_additions / crd_changes（6-30 加，review-gated）。
+- **pd_table_config.json** — sku_aliases / mp_overrides / manual_additions / pd_exclude_skus / crd_change_overrides（07-07 起；原 crd_changes 手填数组已退役）。
 - ~~Project list.xlsx~~ — 已退役并删除（2026-07-02）。
 - **最近一次构建：** 2026-06-30，WK26 Tracker + China PD updates Jun 2026，产出 `China_PD_Monthly_Report_Jun2026(.html/_EN.html)`；7-2 迁本地后重跑 EN 0 warning（translations.json 863 条）。详见 §11。
 
@@ -503,6 +526,31 @@ Kick off → Detail Design → Prototype → Tooling → FOT → EB → Culinary
 - **Project List 白名单退役**：Summer 此前已删 HTML 的 For Sales/All toggle，7-2 验证 `onProjectList` 在 template.html 零引用后，清除 build.py 死代码（`_find_latest_project_list` / `load_project_list` / main 调用），删除 `Project list_5-20-2026.xlsx`。**HTML 数据源三 → 二**（Weekly Tracker + Summers Monthly PD Table）。（2026-07-04 审计核准表述：placeholder 卡仍输出 `'onProjectList': False` 字段、`stage_label_map` 保留空壳 + 兼容循环——均为 template 零引用的无害残留，故意保留不算未清；"死代码清除"指有调用链的部分。）
 - translations.json 860 → 863（补 3 条 WK26 采购/PM 状态），Jun2026 双语 HTML 重出、EN 0 warning。
 - 同日外围变化（不影响本项目数据流）：Sales Tracker 重构为 `Sales FollowUp/` 活清单；周五定时扫描任务迁至 Code Scheduled Tasks。
+
+### 2026-07-07（WK27 月报刷新 + 流程/自动化五连改）
+
+- **数据更新**：换入 PD updates Jun 7/6 新版（6/30 旧版入 Archive）+ WK27 Tracker（Summer 手调版），rebuild + build 中英双版，translations 863→954（+91 条），EN 0 warning。
+- **diff 确认关卡补录**（§5.1 第 4 步 / China_PD_Table_Update.md §9）：rebuild 出 A/B diff 后 Summer confirm 才许跑 build——Cowork 原有关卡，迁本地后被跳过，Summer 重申。
+- **旧 PD Table 备份固化进脚本**：rebuild_pdtable.py 覆盖前自动存 `Archive/Summers_Monthly_PD_Table_backup_{日期}.xlsx`（6-30、7-07 两次人工漏备份的教训）。
+- **`pd_exclude_skus` 配置新增**：排除 PD updates 重复列（首例 Liz RJ11-SSD-12）。
+- **CRD Change tab 程序化**（§5.2.3）：`compute_crd_changes()` 每次 build 自动 diff 上一周 Tracker，取代 6-30 的 review-gated 手填（WK27 忘更事故触发）；与周更三提醒同源；`crd_changes` 数组退役、`crd_change_overrides` 接手人工覆盖。
+- **git push 分工**（§5.1 第 10 步）：Claude 到本地文件为止，push 由 Summer 本人执行。
+- 当日裁决记录：TM103 源文件改名 RJ50-SS-M11（alias 移除）；RJ11-12-SS(D) 与 RJ11-SS(D)-12 按同一产品处理（Liz 待最终确认）；RJ38-G4-V2 为真实 V2 不做 alias；RJ07-32-SS-D-CA/RJ11-GN-BLK-V2/RJ11-GN-SS-V2 进 mp_overrides；Handheld Ice Cream Maker manual_addition 删除、Popcorn Maker 保留。
+- **Stats Bar 改版**（详见 §6 顶栏 Stats Bar）：新增 **PA / 6A 未完成** 块（取代 Tier 1 CSM；点开面板带 PA/6A 切换按钮，置于 × 左侧）；**Project Released 暂时下线**（可一行恢复）；顺序改为 Total→CRD→PA/6A→High→Mid。经 CardView Test 测试版（含"按钮点击重渲染导致 outside-click 误关面板"的 stopPropagation 修复）验证后转正，测试文件已删。template.html + build.py（`{{PA6A_LABELS}}` 双语）同步改，中英文真实点击验证通过。
+
+### 2026-07-14（WK28 周更版月报 + Jenifer PM 段修复）
+
+- **数据更新**：China PD updates **Jul** 2026（Summer 手删 6 列：RJ11-12-SS/-15-SS/-12-SSD/-15-SSD + RJ15-20-HDW + SW-294，及 2 个重复列）+ WK28 Tracker（Summer 验收版），rebuild + build 出 `China_PD_Monthly_Report_Jul2026(.html/_EN.html)`，translations 954→1025（+71 条），EN 0 warning，index.html 同步 EN。
+- **Jenifer PM 段修复（bug，两脚本同步改）**：Jenifer 是 2026-06 新增第 6 位报送人，rebuild_pdtable.py `PM_ORDER`/`normalize_pm`/sheet 兜底 与 build.py `PM_SECTION_ORDER`/`PM_SECTION_TO_CATEGORIES` 均漏加，导致 CSM sheet（C60/C45）落入"⚠️ Other/未归类 PM"段、**从不进 Page 1 卡片循环**。已补 `'Jenifer Yuan — CSM 杭州 (C60 / C45 / CQ60 / C22)'`（与 Tracker 段头文本严格一致），C60/C45 卡片首次上线。
+- **config 清理**：`pd_exclude_skus` 移除 RJ11-SSD-12（源列已被 PM 删除，按 §5.2.1 规则移除条目）。
+- **A 类 5 个占位**（CQ60 V4 + Liz 四个 CA 款）：Summer 裁决先出 PENDING 占位卡，PM 补 PD table 后自动转正；B 类新增 RJ38-G4-AG2/-LS2（真实双碗新变体）与 RJ57-SS-SCL（新品秤）裁决=出卡不进 Tracker。
+- 背景：本页自胡总拍板后实为**周更**节奏（名称沿用 monthly）；周更框架见 `Weekly Tracker/PM_Weekly_Tracker.md` 周一/周二双日流程（2026-07-14 固化，pm-weekly-monitor 定时任务周一 14:00）。
+- **EN 版翻译覆盖三连修（同日，Summer 连抓三处中文残留后系统性排查）**：
+  1. PO buyer 徽章/Buyer filter 不走翻译字典 → **数据侧规则**：Tracker O 列渠道名一律英文、状态词只用规定集（"已发货"不是状态词），已写进 PM_Weekly_Tracker.md § PO 列写法规则；WK28 已修 RJ50-SS-M11（美国/MX→US/MX）、RJ14-12-SQ-V3（已发货挪 L 列）。
+  2. **released 数据整包未翻**（EN render 直接注入原 `released`）→ 新增 `translate_released()`（category/poRaw/crd）；**CRD Change 的 oldCRD/newCRD 未翻** → `crd_changes_en` 补翻。
+  3. **告警盲区补齐**：新增 `report_untranslated_flat()`，released + crd_changes 两块进 build 告警覆盖——今后任何字段漏翻 build 时报 WARNING，不再靠人眼抓。
+  4. template.html `pmEnglish` 补 Jenifer 段头映射（CSM Hangzhou）。
+  5. 全文 CJK 扫描验证：EN 版剩余中文仅为模板 JS 功能字面量（paNorm/sixANorm 中英匹配集、风险值 高/中/低→徽章映射）、JS 注释、pmSection 原始键（经 pmEnglish 渲染为英文）——均非用户可见。
 
 ### 2026-07-04（全文一致性清理，不改代码只改本文档）
 

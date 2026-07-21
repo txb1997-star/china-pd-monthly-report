@@ -86,6 +86,108 @@ def _find_latest_tracker():
 
 
 TRACKER_PATH = _find_latest_tracker()
+
+
+def _find_prev_tracker(current_path):
+    """WK 号次大的 tracker (Weekly Tracker 主目录 + Archive)。CRD Change 自动 diff 的基线。
+    2026-07-07 加: CRD Change tab 从 review-gated 手填改为每次 build 自动对比上一周。"""
+    import re as _re
+    def wk_num(p):
+        m = _re.search(r'WK(\d+)', p.name)
+        return int(m.group(1)) if m else 0
+    cur_wk = wk_num(current_path)
+    candidates = []
+    for d in (WEEKLY_DIR, WEEKLY_DIR / 'Archive'):
+        if _safe_exists(d):
+            candidates.extend(d.glob('China_PD_Weekly_Tracker_WK*.xlsx'))
+    candidates = [p for p in candidates if 'backup' not in p.name.lower() and 0 < wk_num(p) < cur_wk]
+    if not candidates:
+        return None
+    candidates.sort(key=wk_num, reverse=True)
+    for p in candidates:
+        try:
+            ox.load_workbook(p, data_only=True)
+            return p
+        except Exception:
+            continue
+    return None
+
+
+def _crd_date(s):
+    """CRD 单元格文本 → date。只认无歧义写法 (YYYY-MM-DD 或 M/D/YY[YY])，纯文字/无年份的跳过。"""
+    import re as _re
+    from datetime import date as _date
+    if not s:
+        return None
+    s = str(s).strip()
+    m = _re.match(r'^(\d{4})-(\d{1,2})-(\d{1,2})', s)
+    if m:
+        try:
+            return _date(int(m.group(1)), int(m.group(2)), int(m.group(3)))
+        except ValueError:
+            return None
+    m = _re.search(r'(\d{1,2})/(\d{1,2})/(\d{2,4})', s)
+    if m:
+        mo, da, yr = int(m.group(1)), int(m.group(2)), int(m.group(3))
+        yr = 2000 + yr if yr < 100 else yr
+        try:
+            return _date(yr, mo, da)
+        except ValueError:
+            return None
+    return None
+
+
+def compute_crd_changes(tracker_rows, config, sku_aliases):
+    """自动计算 CRD Change / Possible Delay（2026-07-07 起取代 config 手填的 crd_changes）。
+
+    口径（沿用 6-30 Summer 定稿）：
+      delay = CRD 比上一周 Tracker 推迟 + 有 PO（提前的不收）
+      risk  = 高风险 + 有 PO（CRD 未动，但可能 delay）
+    Delay Reason 默认取 Tracker 卡点列；config `crd_change_overrides` 可按 SKU
+    覆盖 reason/reasonEN 或 suppress 剔除误报。
+    """
+    prev_path = _find_prev_tracker(TRACKER_PATH)
+    if prev_path is None:
+        print('      CRD change: no previous-week tracker found -> empty')
+        return []
+    prev_by_sku = {r['sku']: r for r in load_tracker(prev_path, sku_aliases)}
+    overrides = {o.get('sku'): o for o in config.get('crd_change_overrides', [])}
+    out = []
+    for r in tracker_rows:
+        po_stat, _ = parse_po(r['po_status'])
+        if po_stat != 'YES':
+            continue
+        ov = overrides.get(r['sku'], {})
+        if ov.get('suppress'):
+            continue
+        prev = prev_by_sku.get(r['sku'])
+        cur_d = _crd_date(r['crd'])
+        prev_d = _crd_date(prev['crd']) if prev else None
+        if prev_d and cur_d and cur_d > prev_d:
+            kind, days = 'delay', (cur_d - prev_d).days
+        elif '高' in (r['risk'] or ''):
+            kind, days = 'risk', 0
+        else:
+            continue
+        _, buyers = parse_po_buyers(r['po_status'])
+        buyer_disp = '/'.join(b['buyer'] for b in buyers if b['status'] == 'YES')
+        if not buyer_disp:
+            buyer_disp = parse_po(r['po_status'])[1]
+        fmt = lambda d: d.strftime('%m/%d/%Y') if d else (r['crd'] or '')
+        out.append({
+            'sku': r['sku'], 'pm': r['pm'], 'status': r['current_status'],
+            'risk': r['risk'] or '', 'kind': kind,
+            'oldCRD': fmt(prev_d) if kind == 'delay' else fmt(cur_d),
+            'newCRD': fmt(cur_d), 'days': days, 'poBuyer': buyer_disp,
+            'reason': ov.get('reason') or r['issue'] or r['next_action'] or '',
+            'reasonEN': ov.get('reasonEN', ''),
+        })
+    out.sort(key=lambda e: (0 if e['kind'] == 'delay' else 1, -e['days']))
+    print(f'      CRD change (auto vs {prev_path.name}): {len(out)} entries')
+    for e in out:
+        arrow = f"{e['oldCRD']} -> {e['newCRD']} (+{e['days']}d)" if e['kind'] == 'delay' else f"{e['newCRD']} at-risk"
+        print(f"        [{e['kind']}] {e['sku']} {arrow} ({e['pm']})")
+    return out
 PDTABLE_PATH = MONTHLY_DIR / 'Summers_Monthly_PD_Table.xlsx'
 
 # Project List retired 2026-07-02: the HTML "For Sales / All" filter was removed,
@@ -185,6 +287,9 @@ PM_SECTION_ORDER = [
     'Serena Sun — ICEMAN / 咖啡 / 冰淇淋',
     'Chris Zhou — 烤盘 / 搅拌类 + MX 项目',
     'Liz Liu — 水壶 + 微波炉',
+    # 7/14: Jenifer 是 2026-06 新增的第 6 位报送人；此前漏加导致她的 PD Table 段
+    # （⚠️ Other / 未归类 PM）从不进 Page 1 卡片循环
+    'Jenifer Yuan — CSM 杭州 (C60 / C45 / CQ60 / C22)',
 ]
 
 # -------------------------------------------------------------
@@ -1323,6 +1428,33 @@ def translate_pipeline(pipe, trans_dict):
     return new_pipe
 
 
+def translate_released(items, trans_dict):
+    """Translate released-panel rows: category / poRaw / crd.
+    (2026-07-14 加：EN 版此前把 released 整包原样注入，中文 CRD/PO 原文漏进英文版。)"""
+    out = []
+    for p in items:
+        new_p = dict(p)
+        for key in ['category', 'poRaw', 'crd']:
+            if p.get(key):
+                new_p[key] = translate(p[key], trans_dict)
+        out.append(new_p)
+    return out
+
+
+def report_untranslated_flat(items, keys, trans_dict):
+    """Generic missing-translation check over a flat list of dicts（2026-07-14 加，
+    补 released / crd_changes 两个此前不在告警覆盖内的数据块）。"""
+    import re as _re
+    zh_pat = _re.compile(r'[一-鿿]')
+    out = set()
+    for p in items:
+        for k in keys:
+            v = p.get(k)
+            if v and zh_pat.search(str(v)) and str(v) not in trans_dict:
+                out.add(str(v))
+    return out
+
+
 def report_untranslated(items_p1, items_p3, items_pipe, trans_dict):
     """Walk all data and report which Chinese strings have no translation."""
     import re as _re
@@ -1435,6 +1567,8 @@ PM_SECTION_TO_CATEGORIES = {
         ['Griddle', 'Blender'],
     'Liz Liu — 水壶 + 微波炉':
         ['Kettle', 'Microwave'],
+    'Jenifer Yuan — CSM 杭州 (C60 / C45 / CQ60 / C22)':
+        ['Thermometer', 'Vacuum Sealer'],
 }
 
 # How many pending SKUs a PM must have before banner flags their categories.
@@ -1502,7 +1636,7 @@ def build_banner_html(tracker_rows, pd_main, asi_set, mp_set):
 # -------------------------------------------------------------
 # Render & rotate
 # -------------------------------------------------------------
-def render_template(template_text, page1, pipeline_us, pipeline_mx, page3, stats, banner, released, po_labels=None, pa_labels=None, sixa_labels=None, data_asof='', crd_changes=None):
+def render_template(template_text, page1, pipeline_us, pipeline_mx, page3, stats, banner, released, po_labels=None, pa_labels=None, sixa_labels=None, data_asof='', crd_changes=None, pa6a_labels=None):
     """Substitute placeholders with JSON / HTML."""
     if po_labels is None:
         po_labels = {'placed': 'PO Placed', 'intent': 'Intent', 'noPO': 'No PO'}
@@ -1510,11 +1644,14 @@ def render_template(template_text, page1, pipeline_us, pipeline_mx, page3, stats
         pa_labels = {'no': 'No', 'ongoing': 'Ongoing', 'waiting': 'Waiting for Signing', 'done': 'Done'}
     if sixa_labels is None:
         sixa_labels = {'no': 'No', 'ongoing': 'Ongoing', 'done': 'Done', 'na': 'Not Needed'}
+    if pa6a_labels is None:
+        pa6a_labels = {'tile': 'PA / 6A Incomplete', 'panel': 'PA / 6A Incomplete · PP/MP+'}
     out = template_text
     out = out.replace('{{DATA_ASOF}}', data_asof)
     out = out.replace('{{PO_LABELS}}', json.dumps(po_labels, ensure_ascii=False))
     out = out.replace('{{PA_LABELS}}', json.dumps(pa_labels, ensure_ascii=False))
     out = out.replace('{{SIXA_LABELS}}', json.dumps(sixa_labels, ensure_ascii=False))
+    out = out.replace('{{PA6A_LABELS}}', json.dumps(pa6a_labels, ensure_ascii=False))
     out = out.replace('{{PAGE1_DATA}}', json.dumps(page1, ensure_ascii=False))
     out = out.replace('{{PIPELINE_US_DATA}}', json.dumps(pipeline_us, ensure_ascii=False))
     out = out.replace('{{PIPELINE_MX_DATA}}', json.dumps(pipeline_mx, ensure_ascii=False))
@@ -1613,9 +1750,8 @@ def main():
     print(f'      pipelineUSData: counts={pipeline_us["counts"]} (total={sum(pipeline_us["counts"])})')
     print(f'      pipelineMXData: counts={pipeline_mx["counts"]} (total={sum(pipeline_mx["counts"])})')
     stats = build_summary_stats(page1, tracker_rows, asi_set, mp_set, set(pd_main.keys()))
-    crd_changes = config.get('crd_changes', [])
+    crd_changes = compute_crd_changes(tracker_rows, config, sku_aliases)
     stats['crd'] = len(crd_changes)
-    crd_changes_en = [dict(e, reason=e.get('reasonEN', e.get('reason',''))) for e in crd_changes]
     print(f'      summaryStats: {stats}')
     released = build_released_data(tracker_rows, mp_set, pd_main)
     print(f'      releasedData: {len(released)} entries (Project Released dropdown)')
@@ -1627,19 +1763,26 @@ def main():
         print(f'[4/5] Banner OFF')
 
     print(f'[5/5] Render + rotate (Chinese)')
-    html_out = render_template(template, page1, pipeline_us, pipeline_mx, page3, stats, banner, released, po_labels={'placed': '已PO', 'intent': '意向', 'noPO': '无PO'}, pa_labels={'no': '未申请', 'ongoing': '申请中', 'waiting': '待批复', 'done': '已完成'}, sixa_labels={'no': '未申请', 'ongoing': '申请中', 'done': '已完成', 'na': '无需'}, data_asof=DATA_ASOF_CN, crd_changes=crd_changes)
+    html_out = render_template(template, page1, pipeline_us, pipeline_mx, page3, stats, banner, released, po_labels={'placed': '已PO', 'intent': '意向', 'noPO': '无PO'}, pa_labels={'no': '未申请', 'ongoing': '申请中', 'waiting': '待批复', 'done': '已完成'}, sixa_labels={'no': '未申请', 'ongoing': '申请中', 'done': '已完成', 'na': '无需'}, data_asof=DATA_ASOF_CN, crd_changes=crd_changes, pa6a_labels={'tile': 'PA / 6A 未完成', 'panel': 'PA / 6A 未完成 · 已PP/MP'})
     write_with_rotation(html_out, OUT_PATH, PREV_PATH)
 
     print(f'[5/5] Render + rotate (English)')
     trans = load_translations()
     print(f'      translations loaded: {len(trans)} entries')
+    # CRD Change EN: override 有 reasonEN 用之，否则走翻译字典（reason 来自卡点列，与 page3 issue 同源）
+    crd_changes_en = [dict(e, reason=(e.get('reasonEN') or translate(e.get('reason', ''), trans)),
+                           oldCRD=translate(e.get('oldCRD', ''), trans),
+                           newCRD=translate(e.get('newCRD', ''), trans)) for e in crd_changes]
     page1_en = translate_page1(page1, trans)
     page3_en = translate_page3(page3, trans)
     pipeline_us_en = translate_pipeline(pipeline_us, trans)
     pipeline_mx_en = translate_pipeline(pipeline_mx, trans)
+    released_en = translate_released(released, trans)
 
     untranslated = report_untranslated(page1_en, page3_en, pipeline_us_en, trans)
     untranslated |= report_untranslated(page1_en, page3_en, pipeline_mx_en, trans)
+    untranslated |= report_untranslated_flat(released_en, ['category', 'poRaw', 'crd'], trans)
+    untranslated |= report_untranslated_flat(crd_changes_en, ['oldCRD', 'newCRD', 'reason'], trans)
     if untranslated:
         print(f'      WARNING: {len(untranslated)} Chinese strings missing translation:')
         for s in sorted(untranslated)[:10]:
@@ -1649,7 +1792,7 @@ def main():
     else:
         print(f'      OK all Chinese strings translated')
 
-    html_out_en = render_template(template, page1_en, pipeline_us_en, pipeline_mx_en, page3_en, stats, banner, released, po_labels={'placed': 'PO Placed', 'intent': 'Intent', 'noPO': 'No PO'}, pa_labels={'no': 'No', 'ongoing': 'Ongoing', 'waiting': 'Waiting for Signing', 'done': 'Done'}, sixa_labels={'no': 'No', 'ongoing': 'Ongoing', 'done': 'Done', 'na': 'Not Needed'}, data_asof=DATA_ASOF_EN, crd_changes=crd_changes_en)
+    html_out_en = render_template(template, page1_en, pipeline_us_en, pipeline_mx_en, page3_en, stats, banner, released_en, po_labels={'placed': 'PO Placed', 'intent': 'Intent', 'noPO': 'No PO'}, pa_labels={'no': 'No', 'ongoing': 'Ongoing', 'waiting': 'Waiting for Signing', 'done': 'Done'}, sixa_labels={'no': 'No', 'ongoing': 'Ongoing', 'done': 'Done', 'na': 'Not Needed'}, data_asof=DATA_ASOF_EN, crd_changes=crd_changes_en, pa6a_labels={'tile': 'PA / 6A Incomplete', 'panel': 'PA / 6A Incomplete · PP/MP+'})
     write_with_rotation(html_out_en, OUT_PATH_EN, PREV_PATH_EN)
 
     # GitHub Pages 首页跟随最新 EN 版（2026-07-02 加；Push_NOW.bat 的同名逻辑保留作双保险）

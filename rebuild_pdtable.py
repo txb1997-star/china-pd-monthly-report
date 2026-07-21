@@ -127,6 +127,8 @@ PM_ORDER = [
     ('Serena Sun', 'Serena Sun — ICEMAN / 咖啡 / 冰淇淋'),
     ('Chris Zhou', 'Chris Zhou — 烤盘 / 搅拌类 + MX 项目'),
     ('Liz Liu', 'Liz Liu — 水壶 + 微波炉'),
+    # 7/14: Jenifer 是 2026-06 新增的第 6 位报送人，此前漏加导致 CSM sheet 落入 未归类
+    ('Jenifer Yuan', 'Jenifer Yuan — CSM 杭州 (C60 / C45 / CQ60 / C22)'),
 ]
 
 def normalize_pm(raw_pm, sheet_name):
@@ -137,9 +139,10 @@ def normalize_pm(raw_pm, sheet_name):
             'Chris': 'Chris Zhou', 'Cottee': 'Cottee Wei',
             'Rowling': 'Rowling Luo', 'Liz': 'Liz Liu', 'Serena': 'Serena Sun',
             'Tammy': 'Chris Zhou',  # MX projects under Chris
+            'Jenifer': 'Jenifer Yuan',  # 7/14: 第 6 位报送人（CSM 杭州）
         }
         if s in short_to_full: return short_to_full[s]
-        if s in ('Liz Liu', 'Cottee Wei', 'Serena Sun', 'Rowling Luo', 'Chris Zhou'):
+        if s in ('Liz Liu', 'Cottee Wei', 'Serena Sun', 'Rowling Luo', 'Chris Zhou', 'Jenifer Yuan'):
             return s
         return s
     sheet_pm = {
@@ -147,6 +150,7 @@ def normalize_pm(raw_pm, sheet_name):
         'Coffee&Iceman': 'Serena Sun', 'Rice Cooker': 'Liz Liu', 'Juicer': 'Serena Sun',
         'OVEN&Bread maker&Deep fryer&Ric': 'Rowling Luo',
         'Roaster ovn&Waffle maker': 'Rowling Luo', 'Sourcing': 'Chris Zhou',
+        'CSM C60&C45': 'Jenifer Yuan',  # 7/14: CSM sheet 兜底
     }
     return sheet_pm.get(sheet_name, 'Chris Zhou')
 
@@ -182,7 +186,10 @@ def load_config():
     with open(CONFIG_PATH, encoding='utf-8') as f:
         return json.load(f)
 
-def load_pdupdates(src_path):
+def load_pdupdates(src_path, exclude=None):
+    # exclude: pd_table_config.json 的 pd_exclude_skus —— PD updates 里确认的重复/作废列，
+    # 镜像时跳过 (2026-07-07 加, 首例: Liz 的 RJ11-SSD-12 与 RJ11-12-SSD 重复, Summer 裁决留后者)
+    exclude = set(exclude or [])
     wb = openpyxl.load_workbook(src_path, data_only=True)
     records = []
     for sheet_name in wb.sheetnames:
@@ -223,6 +230,9 @@ def load_pdupdates(src_path):
             while len(uf_vals) < 3: uf_vals.append(None)
             data[7] = uf_vals[0]; data[8] = uf_vals[1]; data[9] = uf_vals[2]
             for sku in skus:
+                if sku in exclude:
+                    print(f"  - excluded (pd_exclude_skus): {sku} [{sheet_name}]")
+                    continue
                 row = dict(data)
                 row[1] = sku
                 row['_pm'] = pm
@@ -322,6 +332,16 @@ def write_xlsx(records):
     ws.freeze_panes = 'A2'
     wb.save(SCRATCH_OUT)
     print(f"  ✓ Saved scratch → {SCRATCH_OUT}")
+    # 硬步骤 (2026-07-07 起脚本自动做, 不再依赖人记得): 覆盖前把旧版 PD Table 备份进 Archive
+    # 背景: 06-30 和 07-07 两次重建都漏了手动备份, 旧版不可追 → 固化进脚本
+    if FINAL_OUT.exists():
+        import datetime as _dt
+        _arch = PROJECT_DIR / "Archive"
+        _arch.mkdir(exist_ok=True)
+        _bak = _arch / f"Summers_Monthly_PD_Table_backup_{_dt.date.today():%Y-%m-%d}.xlsx"
+        if not _bak.exists():
+            shutil.copy(FINAL_OUT, _bak)
+            print(f"  ✓ Old PD Table backed up → Archive/{_bak.name}")
     try:
         shutil.copy(SCRATCH_OUT, FINAL_OUT)
         print(f"  ✓ Copied to OneDrive → {FINAL_OUT.name}")
@@ -474,7 +494,7 @@ if __name__ == '__main__':
           f"(ASI now read from Tracker col E)")
     SRC_PATH = find_pd_updates()
     print(f"  Reading PD updates: {SRC_PATH.name}")
-    records = load_pdupdates(SRC_PATH)
+    records = load_pdupdates(SRC_PATH, exclude=config.get('pd_exclude_skus'))
     records = apply_manual_additions(records, config)
     records = apply_excluded(records, config)
     print(f"\n  Total records: {len(records)}")

@@ -12,10 +12,10 @@ Chefman 中国 PD 团队月度产品开发进度报表的构建系统与最新�
 
 这个 repo 把每月一次的 China PD 进度报表从 Excel 数据源转成可交互、可分享的 HTML 网页。报表覆盖四页:
 
-1. **Page 1 — SKU 卡片视图**:按 Category 分组的产品卡片(含渲染图),可筛可搜,每品类带 ⇄ Compare 横向对比浮层。顶部 Stats Bar 六个可点统计块(Total / CRD Change / High Risk / Medium Risk / Tier 1 / Project Released),各有独立计数口径(不等于可见卡片数)。
+1. **Page 1 — SKU 卡片视图**:按 Category 分组的产品卡片(含渲染图),可筛可搜,每品类带 ⇄ Compare 横向对比浮层。顶部 Stats Bar 五个可点统计块(Total / CRD Change / **PA·6A 未完成** / High Risk / Medium Risk,2026-07-07 版;Tier 1 被 PA/6A 取代、Project Released 暂时下线可一行恢复),各有独立计数口径(不等于可见卡片数)。
 2. **Page 2A — Pipeline US**:11 阶段横向管线(Kick off → MP),按 Current Status 分桶,点击下钻;NPD/ASI 切换。
 3. **Page 2B — Pipeline MX**:同结构,只收 `-MX` 后缀 SKU。
-4. **Page 3 — Weekly Tracker 明细表**:全项目行级视图,按 PM / Location / PO / Buyer 筛选。
+4. **Page 3 — Weekly Tracker 明细表**:全项目行级视图,按 PM / Location / PO / Buyer 筛选。右上 **⇓ Export CSV** 按钮(2026-07-14 加,Moshi 需求)导出当前筛选后的行为 CSV(UTF-8 BOM,Excel 直接打开不乱码),文件名含日期和行数。
 
 中英双语同源构建,改一处自动两边同步。月份自动按"每月 10 号切月"规则推导,无需改代码。
 
@@ -66,6 +66,8 @@ python build.py
 ---
 
 ## 怎么 push 最新版到 GitHub
+
+> **分工（2026-07-07 定）：push 由 Summer 本人执行。** Claude 每次更新只负责到"本地文件就绪"（HTML + index.html 同步）为止，不主动 push。
 
 每次出新月度报表后:
 

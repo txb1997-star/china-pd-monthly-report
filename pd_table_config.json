@@ -5,7 +5,7 @@
     "RJ38-G4-AS": "RJ38-G4-LS",
     "RJ38-9TW-V3": "RJ38-9TW-V2",
     "RJ56-DIS-V2-CA-CO": "RJ56-DIS-V2",
-    "TM103": "RJ50-SS-M11"
+    "RJ11-12-SS": "RJ11-SS-12"
   },
   "_mp_overrides_note": "PD Table SKUs to force-treat as MP (Project Released) so they're excluded from page1 cards. Use when PM split a multi-color umbrella in PD updates but Tracker collapses to one MP row. 5/12: RJ64-10 new colors (Tracker 'RJ64-10-new colors' MP covers 4 PD Table color SKUs).",
   "mp_overrides": [
@@ -13,23 +13,12 @@
     "RJ64-10-V2-BTR",
     "RJ64-10-V2-AQU",
     "RJ64-10-V2-LVD",
-    "RJ07-32-SS-D-CA"
+    "RJ07-32-SS-D-CA",
+    "RJ11-GN-BLK-V2",
+    "RJ11-GN-SS-V2"
   ],
   "_manual_additions_note": "Use only when a project is genuinely missing from PD updates xlsx. Format: [{\"_note\":\"...\",\"skus\":[...],\"pm\":\"...\",\"fields\":{...}}]",
   "manual_additions": [
-    {
-      "_note": "5/27 placeholder: Rowling Roaster Oven On Hold (Costco no traction)",
-      "skus": [
-        "RJ15-20-HDW"
-      ],
-      "pm": "Rowling Luo",
-      "fields": {
-        "Category": "Roaster Oven",
-        "Tier": 2,
-        "Brand": "Chefman",
-        "Description": "20qt roaster oven - On Hold (Costco no traction)"
-      }
-    },
     {
       "_note": "6/15 Sourcing sheet item - placeholder SKU",
       "skus": [
@@ -53,97 +42,9 @@
         "Duty": "2.7%+10%",
         "40'HC": 4860
       }
-    },
-    {
-      "_note": "6/15 Sourcing sheet item - placeholder SKU",
-      "skus": [
-        "Handheld Ice Cream Maker"
-      ],
-      "pm": "Chris Zhou",
-      "fields": {
-        "Category": "Ice Cream Maker",
-        "Tier": 3,
-        "Brand": "CHEFMAN",
-        "Description": "Handheld Ice Cream Maker-Mixer with 3 Jars",
-        "Top Feature": "DC 250W",
-        "Sales Sample ETA": "Pending Kick off",
-        "PO Placed?": "NO",
-        "Est. 1st Inspection": "TBD",
-        "Factory": "YWC",
-        "Initial Market": "USA",
-        "1st Cost Estimate": "$21-$23",
-        "Port": "Shenzhen",
-        "Duty": "2.7%+10%",
-        "40'HC": 3190
-      }
     }
   ],
   "_crd_changes_note": "CRD Change clickable stat block. REVIEW-GATED: each week Claude lists candidates (real CRD delay / high-risk / delay-text) from prev-WK vs current-WK Tracker, Summer confirms which to include, then they go here. Rules (6-30 Summer): only CRD pushed LATER (not earlier), only projects WITH PO. kind='delay' shows old->new CRD; kind='risk' = high-risk possible-delay (no date move). Rebuilt each week. WK25->WK26 set below.",
-  "crd_changes": [
-    {
-      "sku": "RJ11-18-PL-TI-V2",
-      "pm": "Liz",
-      "status": "MP",
-      "risk": "高",
-      "kind": "delay",
-      "oldCRD": "06/24/2026",
-      "newCRD": "07/16/2026",
-      "days": 22,
-      "poBuyer": "Target/Kroger",
-      "reason": "PO 切厂 Xinbao→XJ（需50天周期）；包材 UPC 返工延期",
-      "reasonEN": "PO factory switch Xinbao→XJ (50-day cycle); packaging UPC rework delay"
-    },
-    {
-      "sku": "RJ38-3DBW-V2",
-      "pm": "Cottee",
-      "status": "MP",
-      "risk": "低",
-      "kind": "delay",
-      "oldCRD": "06/25/2026",
-      "newCRD": "07/01/2026",
-      "days": 6,
-      "poBuyer": "Amazon",
-      "reason": "改程序中，大货生产暂停",
-      "reasonEN": "Program revision in progress, mass production paused"
-    },
-    {
-      "sku": "RJ07-15-SS-V2-CA",
-      "pm": "Rowling",
-      "status": "MP",
-      "risk": "中",
-      "kind": "delay",
-      "oldCRD": "06/24/2026",
-      "newCRD": "06/30/2026",
-      "days": 6,
-      "poBuyer": "Amazon CA",
-      "reason": "丝印有错导致 CRD 延期",
-      "reasonEN": "Silk-screen error caused CRD delay"
-    },
-    {
-      "sku": "RJ11-GN-BLK-V3",
-      "pm": "Liz",
-      "status": "Tooling Launch",
-      "risk": "高",
-      "kind": "risk",
-      "oldCRD": "07/05/2026",
-      "newCRD": "07/05/2026",
-      "days": 0,
-      "poBuyer": "Amazon",
-      "reason": "包材 CP65 内容争议 + 手柄设计未完，可能 delay CRD",
-      "reasonEN": "Packaging CP65 (Prop 65) dispute + handle design unfinished, may delay CRD"
-    },
-    {
-      "sku": "RJ11-18-SCTI-HP-V2",
-      "pm": "Liz",
-      "status": "FOT",
-      "risk": "高",
-      "kind": "risk",
-      "oldCRD": "07/20/2026",
-      "newCRD": "07/20/2026",
-      "days": 0,
-      "poBuyer": "Amazon",
-      "reason": "烧水时间 claim 争议（理论值 vs 实测），已安排复测",
-      "reasonEN": "Boiling-time claim dispute (theoretical vs measured), re-test arranged"
-    }
-  ]
+  "pd_exclude_skus": [],
+  "crd_change_overrides": []
 }
