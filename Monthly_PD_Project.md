@@ -510,6 +510,17 @@ Kick off → Detail Design → Prototype → Tooling → FOT → EB → Culinary
 
 ## 11. 变更记录
 
+### 2026-07-28（WK30 周更版月报 + compute_crd_changes 别名折叠 bug 修复）
+
+- **数据源**：Summer 7/28 两次发新 `China PD updates Jul 2026.xlsx`（第二版修了 C38-8WS 的 Est. 1st Inspection：原来误填成 `USD50 Estimate`，现为 TBC）。旧 7/21 版进 `Archive/China PD updates Jul 2026 (0721).xlsx`。跑 rebuild_pdtable.py 重建 PD Table = 75 SKU。
+- **A/B/C 裁决（Summer 7/28）**：A 类 3 个（CQ60 V4、RJ55-SS-7-V2-CA、RJ55-SS-11-V2-CA）**出 PENDING 占位卡**；B 类 20 个**只要不是 MP 就正常显示**，不加 alias 不加 mp_override。据此 Page 1 = 61 卡（58 PD + 3 占位）。
+- **RJ38-G4 四行并存已确认不是笔误**：PD 里 `RJ38-G4-AG / -LS`（Est. 1st Inspection 8/7，与主表 CRD 一致）＋ `RJ38-G4-AG2 / -LS2`（TBC，双碗版、artwork 按 Shine 意见暂缓）。Summer 口径：**G4-V2（双碗）≠ G4-AG（单碗）**，AG2/LS2 不是 AG/LS 的别名，主表不建行、PD 侧正常出卡。
+- **RJ57-SS-SCL 的 Est. 1st Inspection 填 `Lead time: 40-50 days` 是对的**（Summer 确认：下单后 40–50 天可 CRD），不当数据错误处理。
+- **修 bug：`compute_crd_changes()` 的 `prev_by_sku` 原来用别名后的 SKU 做 key**，母行与 `-CA` 变体（`RJ11-18-SCTI-HP-V2-CA → RJ11-18-SCTI-HP-V2`、`RJ11-18-PL-V2-CA → RJ11-18-PL-V2`）被 dict 折叠成一条、后者覆盖前者 → **母行的真实延期整条丢失**，且 tab 里显示的 at-risk 其实是 -CA 行的数据挂在母行名下。改用 `load_tracker` 已存的 `sku_raw`（别名前原始 SKU）逐行配对，tab 的 SKU 列也改显示原始 SKU。修复后 CRD Change 由 7 条变 8 条，`RJ11-18-SCTI-HP-V2 07/20→08/02 (+13d)` 回归、at-risk 正确标为 `-CA`。
+- **已知限制（本次暴露，暂不改）**：`_crd_date()` 只认真日期，CRD 格里是文字的行无法参与 diff——本周 `RJ35-SS`（上周"待定（原7/30，秤程序延期）"→8/30）和 `RJ11-18-PL-V2`（上周"首单7/6（update 8/20）"→8/20）两条延期因此没进 tab（周更邮件里有）。反过来这也正是结案行写 `CRD 7/1 ✅大货完成` 后不再被 diff 的机制。
+- **翻译**：本周新增 74 条中文串（全部是 WK30 新写的卡点/Action + 两条 ✅ 结案 CRD 文本 + `UK已下PO`），`translations.json` 1105 → 1179 条，EN 版 build 0 warning。
+- **验证（实物级）**：CN 61 卡 / Page 3 76 行 / CRD Change 8 条 / released 37 / 数据截至 2026-07-24；3 个占位符 `isPlaceholder=true` 逐个确认；B 类非 MP 的 G4-AG2、G4-LS2、RJ57-SS-SCL、RJ15-7-LL-DW 均正常出卡；EN 版 data 字段与页面可见文字 0 中文残留（risk 枚举 低/中/高 由前端 riskBadge 转 LOW/MED/HIGH，属设计）。index.html 已同步最新 EN。**push 由 Summer 执行。**
+
 ### 2026-06-30（WK26）
 - **数据更新**：读 China PD updates Jun 2026 + WK26 Tracker，跑 rebuild_pdtable.py + build.py 重建中英文 HTML。A 段（Tracker 有、PD 缺、非 ASI/MP）5 个按 Summer 决定全出 PENDING 占位卡（未加 alias）。
 - **风险展开页加列**：High/Medium Risk 点开的明细面板每行新增 **PO / PA / 6A** 三列（复用 poBadge/paBadge/sixABadge，中英文自动一致）。改的是 template.html 的 showRiskDetail。

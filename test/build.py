@@ -39,7 +39,10 @@ for _stream in (sys.stdout, sys.stderr):
 # This file lives at <BASE>/Monthly PD Report/build.py, so BASE is two levels up.
 # -------------------------------------------------------------
 MONTHLY_DIR = Path(__file__).resolve().parent
-BASE = MONTHLY_DIR.parent
+# TEST COPY (2026-08-10): lives in <original>/test/, one level deeper than the
+# real build.py, so BASE needs one extra .parent to keep pointing at the PMO
+# folder (Weekly Tracker lookup). Everything else resolves inside test/.
+BASE = MONTHLY_DIR.parent.parent
 WEEKLY_DIR = BASE / 'Weekly Tracker'
 # Sandbox uploads dir (Cowork-injected). Fallback when OneDrive Files On-Demand
 # corrupts the project copy. Check both for the freshest readable Tracker.
@@ -1691,8 +1694,18 @@ def build_banner_html(tracker_rows, pd_main, asi_set, mp_set):
 # -------------------------------------------------------------
 # Render & rotate
 # -------------------------------------------------------------
-def render_template(template_text, page1, pipeline_us, pipeline_mx, page3, stats, banner, released, po_labels=None, pa_labels=None, sixa_labels=None, data_asof='', crd_changes=None, pa6a_labels=None):
+def render_template(template_text, page1, pipeline_us, pipeline_mx, page3, stats, banner, released, po_labels=None, pa_labels=None, sixa_labels=None, data_asof='', crd_changes=None, pa6a_labels=None, ui_labels=None):
     """Substitute placeholders with JSON / HTML."""
+    # TEST 2026-08-10: Region toggle 等新增 UI 文案(中英各一套)
+    if ui_labels is None:
+        ui_labels = {
+            'region_cn': 'China', 'region_us': 'US',
+            'all_categories': 'All Categories', 'all_pms': 'All PMs',
+            'all_tiers': 'All Tiers',
+            'us_status': 'Status (US PD)',
+            'stats_note': 'Stats above cover China PD projects only — '
+                          'switch the Region toggle below to view US PD projects.',
+        }
     if po_labels is None:
         po_labels = {'placed': 'PO Placed', 'intent': 'Intent', 'noPO': 'No PO'}
     if pa_labels is None:
@@ -1716,6 +1729,13 @@ def render_template(template_text, page1, pipeline_us, pipeline_mx, page3, stats
     out = out.replace('{{CRD_CHANGE_DATA}}', json.dumps(crd_changes or [], ensure_ascii=False))
     out = out.replace('{{BANNER_BLOCK}}', banner)
     out = out.replace('{{REPORT_PERIOD}}', REPORT_PERIOD)
+    out = out.replace('{{REGION_CN_LABEL}}', ui_labels['region_cn'])
+    out = out.replace('{{REGION_US_LABEL}}', ui_labels['region_us'])
+    out = out.replace('{{ALL_CATEGORIES_LABEL}}', ui_labels['all_categories'])
+    out = out.replace('{{ALL_PMS_LABEL}}', ui_labels['all_pms'])
+    out = out.replace('{{ALL_TIERS_LABEL}}', ui_labels['all_tiers'])
+    out = out.replace('{{US_STATUS_LABEL}}', ui_labels['us_status'])
+    out = out.replace('{{STATS_NOTE}}', json.dumps(ui_labels['stats_note'], ensure_ascii=False))
     # Sanity: no placeholders should remain
     leftover = re.findall(r'\{\{[A-Z_]+\}\}', out)
     if leftover:
@@ -1785,17 +1805,41 @@ def main():
     placeholders = build_placeholder_cards(tracker_rows, pd_main, asi_set, mp_set, images)
     page1.extend(placeholders)
 
+    cn_card_count = len(page1)
+
+    # TEST (2026-08-10): US PM projects (both sheets) join Page 1 as a second
+    # region. The homepage card area gets a China / US toggle (default China);
+    # the top stats bar stays China-only — US projects have no Weekly Tracker
+    # row, so risk / CRD / PA·6A / PO have no value for them.
+    us_items, _ = load_us_pd()
+    report_us_overlap(us_items, pd_main, tracker_rows)
+    us_items = drop_cn_pm_projects(us_items, tracker_rows, pd_main)
+
+    # Stats computed BEFORE the US append so the top bar stays China-only.
+    stats = build_summary_stats(page1, tracker_rows, asi_set, mp_set, set(pd_main.keys()))
+
+    page1.extend(us_items)
+
     # Merge small categories (< SMALL_CAT_THRESHOLD cards) into "Other".
+    # Counted PER REGION (2026-08-10): the two regions render as separate views,
+    # so a China category with 1 card must still collapse even if the US side
+    # has 4 of the same kind (e.g. Thermometer: CN 1 + US 4).
     SMALL_CAT_THRESHOLD = 3
     from collections import Counter as _Counter
-    cat_counts = _Counter(p.get('category', '') for p in page1)
-    small_cats = {c for c, n in cat_counts.items() if n < SMALL_CAT_THRESHOLD}
     moved = 0
-    for p in page1:
-        if p.get('category', '') in small_cats:
-            p['category'] = 'Other'
-            moved += 1
-    print(f'      page1Data: {len(page1)} cards (= {len(page1)-len(placeholders)} from PD Table + {len(placeholders)} placeholders; {moved} moved to "Other" from {len(small_cats)} small cats)')
+    small_total = 0
+    for region in ('CN', 'US'):
+        bucket = [p for p in page1 if (p.get('source') == 'US') == (region == 'US')]
+        cat_counts = _Counter(p.get('category', '') for p in bucket)
+        small_cats = {c for c, n in cat_counts.items() if n < SMALL_CAT_THRESHOLD}
+        small_total += len(small_cats)
+        for p in bucket:
+            if p.get('category', '') in small_cats:
+                p['category'] = 'Other'
+                moved += 1
+    print(f'      page1Data: {len(page1)} cards '
+          f'(CN {cn_card_count} = {cn_card_count-len(placeholders)} PD Table + {len(placeholders)} placeholders'
+          f' | US {len(us_items)}); {moved} moved to "Other" from {small_total} small cats')
     page3 = build_page3_data(tracker_rows, asi_set, set(pd_main.keys()), mp_set)
     print(f'      page3Data: {len(page3)} tracker rows')
     us_rows = [r for r in tracker_rows if not is_mx_sku(r.get('sku', ''))]
@@ -1804,7 +1848,6 @@ def main():
     pipeline_mx = build_pipeline_data(mx_rows, asi_set)
     print(f'      pipelineUSData: counts={pipeline_us["counts"]} (total={sum(pipeline_us["counts"])})')
     print(f'      pipelineMXData: counts={pipeline_mx["counts"]} (total={sum(pipeline_mx["counts"])})')
-    stats = build_summary_stats(page1, tracker_rows, asi_set, mp_set, set(pd_main.keys()))
     crd_changes = compute_crd_changes(tracker_rows, config, sku_aliases)
     stats['crd'] = len(crd_changes)
     print(f'      summaryStats: {stats}')
@@ -1818,7 +1861,7 @@ def main():
         print(f'[4/5] Banner OFF')
 
     print(f'[5/5] Render + rotate (Chinese)')
-    html_out = render_template(template, page1, pipeline_us, pipeline_mx, page3, stats, banner, released, po_labels={'placed': '已PO', 'intent': '意向', 'noPO': '无PO'}, pa_labels={'no': '未申请', 'ongoing': '申请中', 'waiting': '待批复', 'done': '已完成'}, sixa_labels={'no': '未申请', 'ongoing': '申请中', 'done': '已完成', 'na': '无需'}, data_asof=DATA_ASOF_CN, crd_changes=crd_changes, pa6a_labels={'tile': 'PA / 6A 未完成', 'panel': 'PA / 6A 未完成 · 已PP/MP'})
+    html_out = render_template(template, page1, pipeline_us, pipeline_mx, page3, stats, banner, released, po_labels={'placed': '已PO', 'intent': '意向', 'noPO': '无PO'}, pa_labels={'no': '未申请', 'ongoing': '申请中', 'waiting': '待批复', 'done': '已完成'}, sixa_labels={'no': '未申请', 'ongoing': '申请中', 'done': '已完成', 'na': '无需'}, data_asof=DATA_ASOF_CN, crd_changes=crd_changes, pa6a_labels={'tile': 'PA / 6A 未完成', 'panel': 'PA / 6A 未完成 · 已PP/MP'}, ui_labels={'region_cn': '中国', 'region_us': '美国', 'all_categories': '全部品类', 'all_pms': '全部 PM', 'all_tiers': '全部 Tier', 'us_status': '美方状态 (US PD)', 'stats_note': '上方统计仅含中国 PD 项目；美方项目请用下方卡片区的中国 / 美国切换查看。'})
     write_with_rotation(html_out, OUT_PATH, PREV_PATH)
 
     print(f'[5/5] Render + rotate (English)')
@@ -1856,6 +1899,420 @@ def main():
     print(f'  index.html synced to latest EN report')
 
     print('Done.')
+
+
+# -------------------------------------------------------------
+# TEST (2026-08-10): US PD integration — 美方要求把 US PM 的项目加进月报
+# Page 1(原首页卡片页混排,不单独成页)。
+#
+# Source: 'US PD Update*.xlsx'(美方文件副本)。两个可见 sheet 都要收:
+#   'Chef IQ' —  7 个项目(C..I 列),Chef iQ 品牌线
+#   'Chefman' — 30 个项目(B..AE 列),Chefman 品牌线
+# 两个 sheet 都是竖排 PD Table(行=字段,列=项目),但**行号布局不同**,且
+# Chefman 多 Status 行、少 MSRP/Duty/Brand/RJ-Diff 行 → 各自一套行映射。
+#
+# 图: 两个 sheet 的图都是 Excel 365 "单元格内图片"(image-in-cell 富数据),
+# openpyxl 的 data_only 读出来是 '#VALUE!' —— 不是没有图。用现成的
+# _extract_image_in_cell_raw() 解出来:Chefman 29 张 + Chef IQ 5 张。
+#
+# Tier: Chefman 的 Tier 列直接读(值 1 / 1.5 / 2)。Chef IQ 的 Tier 列写的是
+# 'Chef IQ' —— **Summer 2026-08-10 定:Chef IQ 线就算 Tier 1**。
+#
+# US 项目没有 Weekly Tracker 行 → currentStatus / risk / crd / PO 一律留空
+# (卡片不显示状态徽章和风险点,modal 相应字段显示 —)。Chefman 的 Status 行
+# 是美方自由文本(如 'MP by middle of August for Costco CA followed by
+# Amazon'),**原文进 modal 的 US Status 区,不提炼成阶段徽章** —— 提炼等于
+# 替美方把阶段说具体(如 'waiting for first prototype' 到底算不算 Prototype
+# 阶段,只有他们能定)。卡片改用蓝色 'US PD' 来源徽章,与中国卡区分。
+# -------------------------------------------------------------
+
+def _find_us_pd():
+    """Newest readable 'US PD Update*.xlsx' in MONTHLY_DIR (same drop-in
+    convention as _find_latest_pd_updates: next month's file needs no code edit)."""
+    candidates = sorted(MONTHLY_DIR.glob('US PD Update*.xlsx'),
+                        key=lambda p: p.stat().st_mtime, reverse=True)
+    for p in candidates:
+        try:
+            ox.load_workbook(p, data_only=True)
+            return p
+        except Exception:
+            continue
+    return None
+
+
+# 每个 sheet 一套 field → row 映射。'uf' 是列表(Chefman 有 4 个 Unique
+# Feature 行,Chef IQ 只有 3 个);超出 uf1/uf2/uf3 的并入 uf3。
+_US_SHEETS = [
+    {
+        'sheet': 'Chef IQ',
+        'cols': ['C', 'D', 'E', 'F', 'G', 'H', 'I'],
+        'rows': {
+            'name': 2, 'pm': 3, 'tier': 4, 'market': 5, 'factory': 6,
+            'sample': 7, 'tooled': 8, 'image': 9, 'brand': 10, 'model': 11,
+            'desc': 12, 'msrp': 13, 'cost': 14, 'buffer': 16, 'port': 17,
+            'duty': 18, 'hc40': 19, 'tooling': 20, 'insp': 21,
+            'top': 22, 'uf': [23, 24, 25], 'comp': 26, 'rjdiff': 27,
+            'notes': [28, 29, 30],
+        },
+        # row 2 标签写的是 'Category' 但填的是产品名 → 品类按列硬映射。
+        # 3 台 iQ Mini Oven 归 Oven(台面烤箱,与中国 Oven 区同类)、
+        # 3 个 iQ Sense 归 Thermometer(与中国 C60 同区)、Smart Kettle 归 Kettle。
+        'cat_by_col': {
+            'C': 'Oven', 'D': 'Oven', 'E': 'Oven',
+            'F': 'Thermometer', 'G': 'Kettle',
+            'H': 'Thermometer', 'I': 'Thermometer',
+        },
+        # Tier 列源值 'Chef IQ' → Tier 1 (Summer 2026-08-10)
+        'tier_override': '1',
+        'title_with_name': True,   # model 有重复(3 个项目都是 CQ60),标题带产品名
+    },
+    {
+        'sheet': 'Chefman',
+        'cols': ['B', 'C', 'D', 'E', 'F', 'G', 'H', 'I', 'J', 'K', 'L', 'M',
+                 'N', 'O', 'P', 'Q', 'R', 'S', 'T', 'U', 'V', 'W', 'X', 'Y',
+                 'Z', 'AA', 'AB', 'AC', 'AD', 'AE'],
+        'rows': {
+            'cat': 1, 'name': 2, 'pm': 3, 'tier': 4, 'market': 5, 'factory': 6,
+            'sample': 7, 'tooled': 8, 'status': 9, 'image': 10, 'model': 11,
+            'desc': 12, 'cost': 13, 'buffer': 14, 'port': 15, 'hc40': 16,
+            'tooling': 17, 'insp': 18,
+            'top': 19, 'uf': [20, 21, 22, 23], 'comp': 24,
+            'notes': [25, 26, 27],
+        },
+        'cat_by_col': None,        # row 1 是真品类
+        'tier_override': None,
+        'title_with_name': False,  # model 唯一,标题用 model(与中国卡同形)
+    },
+]
+
+# 美方品类写法 → 报表品类。只列 normalize_category() 认不出或会另开小分区的,
+# 其余(Air Fryer / Kettle / Coffee Maker / Slow cooker / Microwave / Thermometer
+# / Water dispenser / Slushie / Deep fryer / Blender / Rice Cooker / Grill)
+# 走 normalize_category() 自动归一。子串匹配,小写比对。
+_US_CAT_OVERRIDE = [
+    ('toaf', 'Oven'),                    # Toaster Oven Air Fryer = 台面烤箱
+    ('c38 with steam', 'Air Fryers'),
+    ('double basket airfryer', 'Air Fryers'),   # 'airfryer' 连写,自动规则匹配不到
+    ('everything maker', 'Everything Maker'),   # C58 圆/方/mini 三个,自成一区
+    ('vacuum sealer', 'Vaccum Sealer'),  # 跟随中国 PD Table 现有拼法,保证同区
+    ('espresso', 'Coffee'),
+]
+
+# PM 写法归一。同一份文件里 Mayer / Mayer Rosen 混用;Jennifer (CSM) 与中国侧
+# Jenifer 是同一人(CSM 杭州)。不归一筛选器会裂成两个选项。
+# 其余名字原样保留,不猜。
+_US_PM_NORM = {
+    'mayer rosen': 'Mayer',
+    'jennifer (csm)': 'Jenifer',
+    'jennifer': 'Jenifer',
+}
+
+_US_BULLET_RE = re.compile(r'^[•·●▪\-\*]+[ \t]*')
+
+
+def _us_thumb(img_bytes):
+    """raw image bytes → base64 JPEG data URI (same thumb size/quality as the
+    China images so US and CN cards render identically). '' on failure."""
+    try:
+        from PIL import Image as PILImage
+    except ImportError:
+        return ''
+    try:
+        pil = PILImage.open(io.BytesIO(img_bytes))
+        if pil.mode in ('RGBA', 'LA', 'P'):
+            pil = pil.convert('RGBA')
+            bg = PILImage.new('RGB', pil.size, (255, 255, 255))
+            bg.paste(pil, mask=pil.split()[-1])
+            pil = bg
+        elif pil.mode != 'RGB':
+            pil = pil.convert('RGB')
+        pil.thumbnail((IMAGE_THUMB_SIZE, IMAGE_THUMB_SIZE), PILImage.LANCZOS)
+        buf = io.BytesIO()
+        pil.save(buf, format='JPEG', quality=IMAGE_JPEG_QUALITY, optimize=True)
+        return 'data:image/jpeg;base64,' + base64.b64encode(buf.getvalue()).decode('ascii')
+    except Exception:
+        return ''
+
+
+def _us_clean(v):
+    """cellstr + '#VALUE!' (broken refs / image cells) → ''."""
+    s = cellstr(v).replace('\xa0', ' ').strip()
+    return '' if s == '#VALUE!' else s
+
+
+def _us_lines(s, strip_bullets=False):
+    """Drop blank lines; optionally strip per-line bullet chars. Newlines kept —
+    template renders detail values with white-space:pre-line."""
+    lines = [ln.strip() for ln in str(s).split('\n')]
+    lines = [ln for ln in lines if ln]
+    if strip_bullets:
+        lines = [_US_BULLET_RE.sub('', ln).strip() for ln in lines]
+        lines = [ln for ln in lines if ln]
+    return '\n'.join(lines)
+
+
+def _us_category(raw_cat):
+    """US category text → report category bucket."""
+    s = (raw_cat or '').strip()
+    if not s:
+        return ''
+    sl = s.lower()
+    for needle, target in _US_CAT_OVERRIDE:
+        if needle in sl:
+            return target
+    return normalize_category(s)
+
+
+def _us_pm(raw_pm):
+    p = (raw_pm or '').strip()
+    return _US_PM_NORM.get(p.lower(), p)
+
+
+def load_us_pd():
+    """Parse both US sheets into page1-item dicts (build_page1_data schema).
+
+    Returns (items, dup_report) where dup_report lists US models that collide
+    with a China PD Table SKU — printed for Summer to arbitrate (we never
+    silently merge or drop: the two sides carry different info, US = commercial
+    + US status, CN = production status from the Weekly Tracker).
+    """
+    path = _find_us_pd()
+    if path is None:
+        print('      US PD: no "US PD Update*.xlsx" found — skipped')
+        return [], []
+    wb = ox.load_workbook(path, data_only=True)
+
+    # Images: both sheets store them as image-in-cell rich data.
+    raw_imgs = _extract_image_in_cell_raw(path)
+    over_imgs = {}   # traditional floating images, keyed (sheet, row) → bytes
+    for sname in wb.sheetnames:
+        for im in getattr(wb[sname], '_images', []) or []:
+            try:
+                anc = im.anchor._from
+                over_imgs.setdefault((sname, anc.row + 1, anc.col + 1), im._data())
+            except Exception:
+                continue
+
+    items = []
+    img_hits = 0
+    for spec in _US_SHEETS:
+        sname = spec['sheet']
+        if sname not in wb.sheetnames:
+            print(f'      US PD: sheet "{sname}" missing — skipped')
+            continue
+        ws = wb[sname]
+        R = spec['rows']
+        sheet_imgs = raw_imgs.get(sname, {})
+
+        for col in spec['cols']:
+            cidx = ox.utils.column_index_from_string(col)
+            g = lambda key: _us_clean(ws[f'{col}{R[key]}'].value)
+
+            model = g('model')
+            name = g('name')
+            raw_cat = g('cat') if 'cat' in R else ''
+            # Chef IQ 的产品名在 'name' 行;Chefman 的产品名行是空的,品类行
+            # (Rice Cooker / Pizza Maker ...) 才是人看的名字。
+            display_name = name or raw_cat
+            if not (model or display_name):
+                continue        # 整列空
+
+            if spec['title_with_name']:
+                sku = (f'{display_name} ({model})'
+                       if model and model.upper() != 'TBD' else display_name)
+            else:
+                sku = model if model and model.upper() != 'TBD' else f'{display_name} (model TBD)'
+            sku = normalize_sku(sku)
+
+            # ---- Tier: Chef IQ 线整体算 Tier 1;Chefman 读源值(1 / 1.5 / 2)
+            tier = spec['tier_override'] or g('tier')
+            if tier.endswith('.0'):
+                tier = tier[:-2]
+
+            # ---- 数值格式化
+            msrp = g('msrp') if 'msrp' in R else ''
+            if msrp:
+                try:
+                    msrp = f'${float(msrp):,.2f}'
+                except ValueError:
+                    pass
+            duty = g('duty') if 'duty' in R else ''
+            if duty:
+                try:
+                    duty = f'{float(duty) * 100:.1f}%'
+                except ValueError:
+                    pass
+            cost = _us_lines(g('cost'))
+            if cost and cost[0].isdigit():      # 裸数字成本(48.68)补 $
+                cost = '$' + cost
+
+            # ---- Sales sample ETA: 两个子行(7=ETA, 8=办公室已有的开模样)
+            # Chef IQ 的 C/D/E 列 7:8 是合并单元格(一个答案盖两行) → row8 读到
+            # 的是同一个值,去重。
+            sample = g('sample')
+            tooled = g('tooled')
+            if tooled and tooled != sample:
+                sample = (f'{sample}\nTooled sample: {tooled}' if sample
+                          else f'Tooled sample: {tooled}')
+
+            # ---- Unique features: 超出 3 个的并入 uf3(page1 schema 只有 3 位)
+            ufs = [_us_lines(g_, strip_bullets=True)
+                   for g_ in (_us_clean(ws[f'{col}{r}'].value) for r in R['uf'])]
+            ufs = [u for u in ufs if u]
+            uf1 = ufs[0] if len(ufs) > 0 else ''
+            uf2 = ufs[1] if len(ufs) > 1 else ''
+            uf3 = '\n'.join(ufs[2:]) if len(ufs) > 2 else ''
+
+            # ---- Notes: Tooling kickoff 是 US 表独有字段,中国 schema 没有对应
+            # 位置 → 拼进 note1 前部(modal Notes 区可见),不塞进 Est. Inspection
+            # 免得串义。
+            notes = [_us_clean(ws[f'{col}{r}'].value) for r in R['notes']]
+            notes = [n for n in notes if n]
+            tooling = g('tooling')
+            if tooling:
+                notes.insert(0, f'Tooling: {tooling}')
+            note1 = notes[0] if notes else ''
+            note2 = '\n'.join(notes[1:]) if len(notes) > 1 else ''
+
+            # ---- 图片
+            image = ''
+            irow = R.get('image')
+            if irow:
+                b = sheet_imgs.get((irow, cidx)) or over_imgs.get((sname, irow, cidx))
+                if b:
+                    image = _us_thumb(b)
+                    if image:
+                        img_hits += 1
+
+            items.append({
+                'sku': sku,
+                'category': _us_category(raw_cat) if raw_cat else spec['cat_by_col'].get(col, ''),
+                'tier': tier,
+                'brand': brand_for_sku(model, g('brand') if 'brand' in R else
+                                       ('Chef iQ' if sname == 'Chef IQ' else 'Chefman')),
+                'description': g('desc'),
+                'topFeature': _us_lines(g('top'), strip_bullets=True),
+                'uf1': uf1, 'uf2': uf2, 'uf3': uf3,
+                'msrp': msrp,
+                'sampleETA': sample,
+                'poPlaced': '', 'poStatus': '', 'poBuyer': '',
+                'estInspection': g('insp'),
+                'factory': g('factory'),
+                'market': g('market'),
+                'cost': cost,
+                'buffer': g('buffer'),
+                'port': g('port'),
+                'duty': duty,
+                'hc40': g('hc40'),
+                'compModel': g('comp'),
+                'rjDiff': _us_lines(g('rjdiff')) if 'rjdiff' in R else '',
+                'note1': note1,
+                'note2': note2,
+                'pmSection': f'US — {sname}',
+                # 无 Weekly Tracker 行 → 状态/风险/CRD 一律空(见段头注释)
+                'currentStatus': '', 'risk': '', 'crd': '', 'pv': '',
+                'pm': _us_pm(g('pm')),
+                'image': image,
+                # US 专属:来源标记 + 美方 Status 原文
+                'source': 'US',
+                'usSheet': sname,
+                'usStatus': _us_lines(g('status')) if 'status' in R else '',
+                'usModel': model,
+                'usProduct': display_name,
+            })
+
+    per_sheet = []
+    for spec in _US_SHEETS:
+        n = sum(1 for i in items if i['usSheet'] == spec['sheet'])
+        per_sheet.append(f'{spec["sheet"]}={n}')
+    print(f'      US PD source: {path.name}')
+    print(f'      US PD: {len(items)} projects ({", ".join(per_sheet)}), '
+          f'{img_hits} with images')
+    return items, []
+
+
+def report_us_overlap(us_items, pd_main, tracker_rows):
+    """列出 US 项目与中国侧同号 / 近号的清单(供 Summer 裁决是否合并)。
+    只报告,不改数据 —— 两边信息不同源(US=美方商务+状态,CN=Tracker 生产状态),
+    合并谁压谁是业务裁决。"""
+    cn_skus = set(pd_main.keys()) | {r['sku'] for r in tracker_rows if r.get('sku')}
+
+    def base(s):
+        return re.sub(r'[^A-Z0-9]', '', str(s or '').upper())
+
+    cn_by_base = {}
+    for s in cn_skus:
+        cn_by_base.setdefault(base(s), set()).add(s)
+
+    exact, near = [], []
+    for it in us_items:
+        m = it.get('usModel') or ''
+        first = m.split('/')[0].strip()
+        b = base(first)
+        if not b:
+            continue
+        if b in cn_by_base:
+            exact.append((it['sku'], sorted(cn_by_base[b])))
+            continue
+        hits = sorted({c for bb, cs in cn_by_base.items() for c in cs
+                       if bb and len(b) >= 3 and (bb.startswith(b) or b.startswith(bb))})
+        if hits:
+            near.append((it['sku'], hits))
+    if exact:
+        print(f'      !! US/CN 同号 {len(exact)} 组(两张卡并存,待 Summer 裁决合并):')
+        for us, cn in exact:
+            print(f'         US {us}  ==  CN {", ".join(cn)}')
+    if near:
+        print(f'      ~  US/CN 近号 {len(near)} 组(疑似同项目不同版本):')
+        for us, cn in near:
+            print(f'         US {us}  ~~  CN {", ".join(cn)}')
+    return exact, near
+
+
+def drop_cn_pm_projects(us_items, tracker_rows, pd_main):
+    """US region 里剔掉挂在中国 PM 名下的项目(Summer 2026-08-10 定)。
+
+    美方那张表把一部分中国线项目也列了进来(C55 / C56 / C62 / C60 等),报送人
+    写的是中国 PM 本人。这些项目在中国视图里已经有卡,留在 US region 属于重复,
+    且会让 US 的 PM 筛选器混进中国 PM 名字。
+
+    判定口径:US 行的 Project Manager 与 Weekly Tracker 的 PM 完全同名(已过
+    PM 归一,见 _US_PM_ALIASES)。'Emma/Dan' 这类复合值不算同名,保留。
+    中国侧没有对应 SKU 的会单独警示 —— 摘掉后它在报表里就完全看不到了。
+    """
+    cn_pms = {r['pm'] for r in tracker_rows if r.get('pm')}
+    if not cn_pms:
+        return us_items
+
+    cn_skus = set(pd_main.keys()) | {r['sku'] for r in tracker_rows if r.get('sku')}
+
+    def base(s):
+        return re.sub(r'[^A-Z0-9]', '', str(s or '').upper())
+
+    cn_bases = {base(s) for s in cn_skus}
+
+    kept, dropped = [], []
+    for it in us_items:
+        if it.get('pm') in cn_pms:
+            dropped.append(it)
+        else:
+            kept.append(it)
+
+    if dropped:
+        print(f'      -- US region 剔除 {len(dropped)} 张(PM 与中国侧同名 → 属中国线项目):')
+        orphans = []
+        for it in dropped:
+            b = base((it.get('usModel') or '').split('/')[0])
+            has_cn = bool(b) and any(cb == b or cb.startswith(b) or b.startswith(cb)
+                                     for cb in cn_bases if cb)
+            mark = '中国侧有对应卡' if has_cn else '!! 中国侧无对应,摘掉后报表里看不到'
+            print(f'         [{it.get("pm")}] {it["sku"]} — {mark}')
+            if not has_cn:
+                orphans.append(it['sku'])
+        if orphans:
+            print(f'      !! 待 Summer 裁决: {len(orphans)} 个只在美方表里出现的项目被一并摘掉: '
+                  f'{", ".join(orphans)}')
+    return kept
 
 
 if __name__ == '__main__':

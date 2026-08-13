@@ -253,6 +253,8 @@ tr.terminated td{text-decoration:line-through}
   <div class="p1-filters">
     <div class="filter-group"><label>Category</label><select id="f1-cat" onchange="filterPage1()"><option value="">All Categories</option></select></div>
     <div class="filter-group"><label>PM</label><select id="f1-pm" onchange="filterPage1()"><option value="">All PMs</option></select></div>
+    <div class="filter-group"><label>Tier</label><select id="f1-tier" onchange="filterPage1()"><option value="">All Tiers</option><option value="1">Tier 1</option><option value="2">Tier 2</option><option value="3">Tier 3</option></select></div>
+    <div class="filter-group"><label>Brand</label><select id="f1-brand" onchange="filterPage1()"><option value="">All Brands</option><option value="Chefman">Chefman</option><option value="Chef iQ">Chef iQ</option></select></div>
     <div class="filter-group"><label>PO</label><div class="toggle-group" id="f1-po-toggle"><button class="toggle-btn active" data-val="">All</button><button class="toggle-btn" data-val="YES">PO Placed</button><button class="toggle-btn" data-val="NO">No PO</button></div></div>
     <div class="filter-group"><label>Search</label><input type="text" id="f1-search" placeholder="SKU, description, feature..." oninput="filterPage1()"></div>
   </div>
@@ -370,7 +372,7 @@ function renderStats(){
   b.innerHTML='<div class="home-btn" onclick="goHome()" title="Home"><span>HOME</span></div>'+'<div class="stat-card sc-total" onclick="statClick(\'total\')"><div class="stat-num">'+summaryStats.total+'</div><div class="stat-label">Total Projects</div></div>'+'<div class="stat-card sc-crd" onclick="statClick(\'crd\')"><div class="stat-num">'+(summaryStats.crd||0)+'</div><div class="stat-label">CRD Change</div></div>'+'<div class="stat-card sc-t1" onclick="statClick(\'pa6a\')"><div class="stat-num">'+pa6aCount()+'</div><div class="stat-label">'+PA6A_LABELS.tile+'</div></div>'+'<div class="stat-card sc-high" onclick="statClick(\'high\')"><div class="stat-num">'+summaryStats.high+'</div><div class="stat-label">High Risk</div></div>'+'<div class="stat-card sc-mid" onclick="statClick(\'mid\')"><div class="stat-num">'+summaryStats.mid+'</div><div class="stat-label">Medium Risk</div></div>';
 }
 
-function goHome(){closeRiskPanel();switchTab('pd-table');document.getElementById('f1-cat').value='';document.getElementById('f1-search').value='';document.querySelectorAll('#f1-po-toggle .toggle-btn').forEach(function(b){b.classList.toggle('active',b.getAttribute('data-val')==='')});filterPage1()}
+function goHome(){closeRiskPanel();switchTab('pd-table');document.getElementById('f1-cat').value='';document.getElementById('f1-search').value='';document.getElementById('f1-tier').value='';document.getElementById('f1-brand').value='';document.querySelectorAll('#f1-po-toggle .toggle-btn').forEach(function(b){b.classList.toggle('active',b.getAttribute('data-val')==='')});filterPage1()}
 
 // Stat card click handlers
 function switchTab(tabId){
@@ -470,6 +472,8 @@ function statClick(type){
   switchTab('pd-table');
   document.getElementById('f1-cat').value='';
   document.getElementById('f1-search').value='';
+  document.getElementById('f1-tier').value='';
+  document.getElementById('f1-brand').value='';
   document.querySelectorAll('#f1-po-toggle .toggle-btn').forEach(function(b){b.classList.remove('active')});
   document.querySelector('#f1-po-toggle .toggle-btn[data-val=""]').classList.add('active');
   currentPOFilter='';
@@ -566,6 +570,8 @@ function initPage1(){
 function filterPage1(){
   var catF=document.getElementById('f1-cat').value;
   var pmF=document.getElementById('f1-pm').value;
+  var tierF=document.getElementById('f1-tier').value;
+  var brandF=document.getElementById('f1-brand').value;
   var poF=currentPOFilter;
   var searchF=document.getElementById('f1-search').value.toLowerCase();
   var sf=currentStatFilter;
@@ -577,6 +583,8 @@ function filterPage1(){
     if(sf==='mp'){var sl=(p.currentStatus||'').toLowerCase();if(sl.indexOf('mp')===-1)return false}
     if(catF&&p.category!==catF)return false;
     if(pmF&&p.pm!==pmF)return false;
+    if(tierF&&String(p.tier||'')!==tierF)return false;
+    if(brandF&&(p.brand||'')!==brandF)return false;
     if(poF==='YES'&&p.poStatus!=='YES')return false;
     if(poF==='NO'&&p.poStatus!=='NO')return false;
     if(searchF&&JSON.stringify(p).toLowerCase().indexOf(searchF)===-1)return false;

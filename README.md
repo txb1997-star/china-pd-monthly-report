@@ -12,7 +12,11 @@ Chefman 中国 PD 团队月度产品开发进度报表的构建系统与最新�
 
 这个 repo 把每月一次的 China PD 进度报表从 Excel 数据源转成可交互、可分享的 HTML 网页。报表覆盖四页:
 
-1. **Page 1 — SKU 卡片视图**:按 Category 分组的产品卡片(含渲染图),可筛可搜,每品类带 ⇄ Compare 横向对比浮层。顶部 Stats Bar 五个可点统计块(Total / CRD Change / **PA·6A 未完成** / High Risk / Medium Risk,2026-07-07 版;Tier 1 被 PA/6A 取代、Project Released 暂时下线可一行恢复),各有独立计数口径(不等于可见卡片数)。
+1. **Page 1 — SKU 卡片视图**:按 Category 分组的产品卡片(含渲染图),可筛可搜,每品类带 ⇄ Compare 横向对比浮层。筛选器依次为 **Category / PM / Tier / Brand / PO / Search**(Tier 与 Brand 于 2026-08-04 加)。
+
+**Brand 取值口径(Summer 2026-08-04 定,见 `build.py` 的 `brand_for_sku()`):PD Table 的 Brand 列优先**——有值就用它,只做大小写归一(源数据里 `Chefman` / `CHEFMAN` 混用、`Chef IQ` / `Chef iQ` 混用,不归一会在筛选器里裂成两个选项)。**PD Table 该列为空时才回落到 SKU 规则:以 `CQ` 开头的、以及 `C60`,归 Chef iQ;其余 Chefman。** 例:`CQ60 V4` 在 PD Table 里 Brand 是空的,靠 SKU 规则判为 Chef iQ;`C45` PD Table 写的是 Chef IQ,就按 PD Table 走。遇到没见过的品牌值原样保留,不静默改写。
+
+Tier 直接读 PD Table 的 Tier 列,空值行(本期 7 个,多为 RJ55 系列)只在 "All Tiers" 下出现。顶部 Stats Bar 五个可点统计块(Total / CRD Change / **PA·6A 未完成** / High Risk / Medium Risk,2026-07-07 版;Tier 1 被 PA/6A 取代、Project Released 暂时下线可一行恢复),各有独立计数口径(不等于可见卡片数)。
 2. **Page 2A — Pipeline US**:11 阶段横向管线(Kick off → MP),按 Current Status 分桶,点击下钻;NPD/ASI 切换。
 3. **Page 2B — Pipeline MX**:同结构,只收 `-MX` 后缀 SKU。
 4. **Page 3 — Weekly Tracker 明细表**:全项目行级视图,按 PM / Location / PO / Buyer 筛选。右上 **⇓ Export CSV** 按钮(2026-07-14 加,Moshi 需求)导出当前筛选后的行为 CSV(UTF-8 BOM,Excel 直接打开不乱码),文件名含日期和行数。
